@@ -1,0 +1,90 @@
+# ----------------------------
+# Environment Variables
+# ----------------------------
+.env
+.env.*
+*.env
+
+# ----------------------------
+# Database & Local Data
+# ----------------------------
+/data/
+*.db
+*.sqlite
+*.sqlite3
+
+# ----------------------------
+# Logs & Temp Files
+# ----------------------------
+*.log
+*.tmp
+*.out
+
+# ----------------------------
+# Go Backend
+# ----------------------------
+
+/backend/bin/
+/backend/build/
+/backend/vendor/
+*.exe
+*.test
+*.prof
+
+# Go workspace files
+go.work
+go.work.sum
+
+# ----------------------------
+# Node / React Frontend
+# ----------------------------
+/frontend/node_modules/
+/frontend/build/
+/frontend/.next/
+/frontend/dist/
+
+# Logs
+
+/frontend/npm-debug.log*
+/frontend/yarn-debug.log*
+/frontend/yarn-error.log*
+
+# ----------------------------
+# Docker
+# ----------------------------
+*.tar
+*.gz
+
+# ----------------------------
+# Test / Coverage
+# ----------------------------
+
+coverage.out
+*.coverprofile
+
+# ----------------------------
+# OS / Editor Files
+# ----------------------------
+
+.DS_Store
+Thumbs.db
+
+# VS Code
+
+.vscode/
+
+
+# ----------------------------
+# Secrets (extra safety)
+# ----------------------------
+
+*.pem
+*.key
+*.crt
+
+# ----------------------------
+# Misc
+# ----------------------------
+
+*.swp
+*.swo
