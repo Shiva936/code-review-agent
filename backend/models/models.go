@@ -21,3 +21,19 @@ type LoopState struct {
 	AverageScore    float64
 	BestScore       int
 }
+
+// Run represents a single iteration result.
+type Run struct {
+	Iteration int
+	Score     int
+	Weakness  string
+}
+
+// EvalResult represents the evaluation score breakdown.
+type EvalResult struct {
+	Actionability    int
+	Specificity      int
+	Severity         int
+	Total            int
+	WeaknessCategory string
+}
