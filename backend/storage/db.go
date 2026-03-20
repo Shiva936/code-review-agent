@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -33,7 +34,13 @@ func InitDB(dbPath string) error {
 		if envPath := os.Getenv("DATABASE_PATH"); envPath != "" {
 			dbPath = envPath
 		} else {
-			dbPath = "./data/app.db"
+			// In deployments (e.g. Docker / Railway with a mounted volume),
+			// prefer the mounted path.
+			if runtime.GOOS == "windows" {
+				dbPath = "./data/app.db"
+			} else {
+				dbPath = "/data/app.db"
+			}
 		}
 	}
 
