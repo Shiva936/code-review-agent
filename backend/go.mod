@@ -1,4 +1,4 @@
-module code-review-agent
+module github.com/Shiva936/code-review-agent/backend
 
 go 1.22
 

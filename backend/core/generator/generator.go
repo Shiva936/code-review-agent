@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"code-review-agent/backend/llm"
+	"github.com/Shiva936/code-review-agent/backend/llm"
 )
 
 // Generate creates a code review from the given prompt and code snippet.

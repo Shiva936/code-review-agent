@@ -6,8 +6,8 @@ import (
 	"log"
 	"strings"
 
-	"code-review-agent/backend/llm"
-	"code-review-agent/backend/models"
+	"github.com/Shiva936/code-review-agent/backend/llm"
+	"github.com/Shiva936/code-review-agent/backend/models"
 )
 
 // Evaluate scores a generated review using the evaluation rubric.
