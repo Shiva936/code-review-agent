@@ -32,6 +32,7 @@ func main() {
 
 	http.HandleFunc("/health", healthHandler)
 	http.HandleFunc("/run", runHandler)
+	http.HandleFunc("/runs", runsHandler)
 
 	addr := fmt.Sprintf(":%s", port)
 	log.Printf("Server running on port %s\n", port)
@@ -39,9 +40,15 @@ func main() {
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed"})
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `{"status": "ok"}`)
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 type LoopSummary struct {
@@ -53,14 +60,18 @@ type LoopSummary struct {
 
 func runHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed"})
 		return
 	}
 
 	runMu.Lock()
 	if isRunning {
 		runMu.Unlock()
-		http.Error(w, "loop already running", http.StatusTooEarly)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooEarly)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "loop already running"})
 		return
 	}
 	isRunning = true
@@ -74,13 +85,51 @@ func runHandler(w http.ResponseWriter, r *http.Request) {
 
 	summary, err := runLoop()
 	if err != nil {
-		http.Error(w, fmt.Sprintf("loop failed: %v", err), http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("loop failed: %v", err)})
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(summary)
+}
+
+type runResponse struct {
+	Iteration int    `json:"iteration"`
+	Score     int    `json:"score"`
+	Weakness  string `json:"weakness"`
+}
+
+func runsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	runs, err := storage.GetRuns()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("failed to load runs: %v", err)})
+		return
+	}
+
+	resp := make([]runResponse, 0, len(runs))
+	for _, run := range runs {
+		resp = append(resp, runResponse{
+			Iteration: run.Iteration,
+			Score:     run.Score,
+			Weakness:  run.Weakness,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string][]runResponse{"runs": resp})
 }
 
 func runLoop() (*LoopSummary, error) {
