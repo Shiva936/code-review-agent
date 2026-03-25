@@ -1,40 +1,49 @@
 import { basicAuthHeader, loadConfig } from "./config";
 
-export type RunRow = {
-  iteration: number;
-  score: number;
-  weakness: string;
+export type RunStartResponse = {
+  run_group_id: number;
+  status: string;
 };
 
-export type RunsResponse = {
-  runs: RunRow[];
-};
-
-export type LoopSummary = {
-  iterations: number;
-  sample_count: number;
-  avg_scores: number[];
-  weaknesses: string[];
-  group_id: number;
+export type SampleEvalMetrics = {
+  index: number;
+  total: number;
+  actionability: number;
+  specificity: number;
+  severity: number;
+  weakness_category: string;
+  logic: number;
+  performance: number;
+  security: number;
+  style: number;
 };
 
 export type RunGroupRun = {
   iteration: number;
   score: number;
   weakness: string;
+  status: string;
+  progress_percent?: number;
+  actionability?: number;
+  specificity?: number;
+  severity?: number;
+  structure?: number;
+  samples?: SampleEvalMetrics[];
 };
 
 export type RunGroup = {
   id: number;
-  iterations: number;
+  input_code: string;
+  status: string;
   created_at: string;
-  runs: RunGroupRun[];
+  updated_at: string;
+  iterations: RunGroupRun[];
 };
 
 export type RunGroupsResponse = {
   total: number;
-  limit: number;
-  offset: number;
+  page: number;
+  page_size: number;
   groups: RunGroup[];
 };
 
@@ -43,7 +52,9 @@ async function request<T>(
   init?: RequestInit,
 ): Promise<T> {
   const cfg = loadConfig();
-  const url = cfg.apiBaseUrl.replace(/\/+$/, "") + path;
+  const base = (cfg.apiBaseUrl || "").trim();
+  const sameOrigin = typeof window !== "undefined" && base === window.location.origin;
+  const url = !base || sameOrigin ? path : base.replace(/\/+$/, "") + path;
 
   const headers = new Headers(init?.headers || undefined);
   headers.set("Content-Type", "application/json");
@@ -71,13 +82,12 @@ async function request<T>(
 }
 
 export const api = {
-  getRuns: () => request<RunsResponse>("/runs"),
   run: (code: string, prompt: string) =>
-    request<LoopSummary>("/run", {
+    request<RunStartResponse>("/run", {
       method: "POST",
       body: JSON.stringify({ code, prompt }),
     }),
-  getRunGroups: (limit = 20, offset = 0) =>
-    request<RunGroupsResponse>(`/run-groups?limit=${limit}&offset=${offset}`),
+  getRunGroups: (page = 1) =>
+    request<RunGroupsResponse>(`/run-groups?page=${page}`),
 };
 

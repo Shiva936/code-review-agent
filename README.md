@@ -4,20 +4,22 @@ A feedback-driven system that improves its own outputs across runs using a **Gen
 
 This project implements a minimal, fully traceable pipeline where a code review agent iteratively enhances its performance by learning from past weaknesses — with persistent state and measurable improvement.
 
+![UI Design](./docs/images/UI-Design.png)
+
 ---
 
 # 🚀 Overview
 
-This project solves the problem of **Code Review's** by using a feedback-driven system.
+This project explores **automated code review** using a feedback-driven system.
 
-Given a code snippet, the system:
+Given a **user-submitted** code snippet (see `docs/SAMPLE.md` for extra examples), the system:
 
-1. **Generates** a structured code review
-2. **Evaluates** the review using a scoring rubric
-3. **Refines** its prompt based on detected weaknesses
-4. Repeats this loop across multiple runs
+1. **Generates** a structured code review for that snippet
+2. **Evaluates** the review using a scoring rubric (LLM-as-judge)
+3. **Refines** its prompt based on detected weaknesses (category-driven rules + reinforcement when a weakness repeats)
+4. Repeats for **5 iterations** and persists each step
 
-The objective is to demonstrate **score improvement over iterations**.
+The objective is to demonstrate **measurable change** across iterations (scores may rise, dip slightly, or plateau depending on the model; the pipeline is designed so prompts and reviews are not identical every time).
 
 ---
 
@@ -37,7 +39,8 @@ Generate → Evaluate → Refine → Persist → Repeat
 
 ### Evaluate
 
-* Uses LLM-as-judge to score output:
+* Uses LLM-as-judge to score output. The judge receives **iteration context** (e.g. iteration 3 of 5, previous rubric total) so it can differentiate runs instead of collapsing to identical middle scores.
+* **Sampling:** generation uses higher **temperature** than evaluation to reduce mode-collapse (same text/scores every call).
 
 | Metric        | Description                            |
 | ------------- | -------------------------------------- |
@@ -45,13 +48,12 @@ Generate → Evaluate → Refine → Persist → Repeat
 | Specificity   | References variables/lines? (1–5)      |
 | Severity      | Correct severity classification? (1–5) |
 
-Total score: **/15**
+Total score: **/15** (sum of the three rubric dimensions)
 
 ### Refine
 
-* Identifies weakest category
-* Updates prompt with targeted instructions
-* Maintains persistent weakness patterns
+* Aggregates weakest **issue category** (logic / performance / security / style) across samples
+* Appends a targeted rule to the reviewer prompt; if the same weakness repeats, an **escalating reinforcement** line is added so the prompt keeps changing
 
 ### Persist
 
@@ -99,7 +101,9 @@ Storage (SQLite)
     api.ts
     config.ts
 
-/data (SQLite or JSON persistence)
+docs/SAMPLE.md (optional paste examples for the UI)
+
+backend/data (SQLite; WAL sidecar files may appear next to `app.db`)
 ```
 
 ---
@@ -108,22 +112,20 @@ Storage (SQLite)
 
 * **Backend:** Go
 * **Frontend:** React (minimal dashboard)
-* **LLM Provider:** OpenRouter (free tier)
-* **Models:**
-
-  * Generation → `mistralai/mistral-7b-instruct`
-  * Evaluation → `meta-llama/llama-3-8b-instruct`
-* **Database:** SQLite
+* **LLM Provider:** OpenRouter
+* **Models (defaults in config):** `generator_model` and `evaluator_model` in `backend/env/default.toml` (override via `GENERATOR_MODEL` / `EVALUATOR_MODEL`).
+* **Evaluation retries:** `max_eval_retries` in `backend/env/default.toml` (override via `MAX_EVAL_RETRIES`).
+* **Database:** SQLite (WAL mode; see `docs/SETUP.md` for `app.db` / `-wal` / `-shm`)
 
 ---
 
 # ▶️ How It Works
 
-1. User (or frontend) triggers `POST /run` with a code snippet
-2. The system runs **5 iterations** on that input
+1. User (or frontend) triggers `POST /run` with a code snippet (and optional extra prompt)
+2. The system runs **5 iterations** on **that snippet** (stored for the UI; the loop uses it as the code under review)
 3. Each iteration:
-   - generates a review
-   - evaluates the review
+   - generates a review (with **previous iteration’s review** as context after iteration 1)
+   - evaluates the review (with **iteration index** and **previous rubric total**)
    - refines the prompt for the next iteration
    - persists results
 
@@ -232,11 +234,29 @@ This ensures learning survives restarts.
 
 ---
 
+# 📚 Learning references (patterns, not copied code)
+
+These are useful for how **agentic loops** are structured—task decomposition, evaluation hooks, persistence—not as code to paste into this repo.
+
+* **[AgentHub](https://www.agenthub.dev)** — Browse real agent pipelines; notice where evaluation and branching happen in the loop.
+* **[karpathy/autoresearch](https://github.com/karpathy/autoresearch)** — Research-style autonomous loop with scoring and state; closest public spirit to “close the loop and persist.”
+
+**How this project differs (short):**
+
+| | This repo | autoresearch-style systems |
+| --- | --- | --- |
+| Domain | Code review + rubric judge | Research / training experiments |
+| State | SQLite run groups + per-iteration metrics | Varies (checkpoints, logs, etc.) |
+| “Improvement” | Prompt rules + reinforcement + iteration-aware scoring | Task-specific metrics and tooling |
+
+You should be able to **say in your own words** how your loop closes (generate → evaluate → refine → persist) and where the **evaluation hook** sits versus open-ended agent steps.
+
+---
+
 # 📈 Observations
 
-* Scores improve across iterations due to targeted refinement
-* Minor fluctuations may occur due to model randomness
-* Structured constraints significantly improve output quality
+* Iterations are **designed** to diverge (temperature, prior review context, refiner, judge instructions); **monotonic score increase is not guaranteed** on free or small models.
+* Minor fluctuations are normal; compare **trends** and qualitative review text, not only a single number.
 
 ---
 

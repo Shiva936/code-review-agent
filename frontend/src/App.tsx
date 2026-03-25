@@ -1,97 +1,204 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Chart from "chart.js/auto";
-import { api, type LoopSummary, type RunGroup, type RunRow } from "./api";
-import { clearConfig, loadConfig, saveConfig } from "./config";
+import { api, type RunGroup, type RunGroupRun, type RunStartResponse } from "./api";
+
+const POLL_MS = 2500;
+
+function truncate(s: string, max: number) {
+  if (!s) return "";
+  const t = s.replace(/\s+/g, " ").trim();
+  return t.length <= max ? t : t.slice(0, max) + "…";
+}
+
+/** Last completed iteration's score, or undefined if none */
+function finalScoreForGroup(g: RunGroup): number | undefined {
+  const done = (g.iterations || []).filter((r) => r.status === "completed");
+  if (done.length === 0) return undefined;
+  const last = done.reduce((a, b) => (a.iteration > b.iteration ? a : b));
+  return last.score;
+}
+
+/** Rubric 1–5 → mockup-style labels (numeric still available via title). */
+const METRIC_LABELS = {
+  specificity: ["Very low", "Low", "Medium", "High", "Very high"],
+  actionability: ["Very weak", "Weak", "Moderate", "Strong", "Very strong"],
+  severity: ["Poor", "Fair", "Good", "Strong", "Excellent"],
+  structure: ["Poor", "Fair", "Good", "Strong", "Excellent"],
+} as const;
+
+type MetricKind = keyof typeof METRIC_LABELS;
+
+function fmtMetricQual(v: number | undefined, kind: MetricKind): string {
+  if (v === undefined || v === null || Number.isNaN(v)) return "—";
+  const n = Math.round(Number(v));
+  const labels = METRIC_LABELS[kind];
+  if (n >= 1 && n <= 5) return labels[n - 1];
+  return String(v);
+}
+
+function metricTitle(v: number | undefined, kind: MetricKind): string | undefined {
+  if (v === undefined || v === null || Number.isNaN(v)) return undefined;
+  return `Rubric: ${Math.round(Number(v))}/5`;
+}
+
+function sortedIterations(iterations: RunGroupRun[] | undefined): RunGroupRun[] {
+  return [...(iterations || [])].sort((a, b) => a.iteration - b.iteration);
+}
+
+/** Previous completed iteration in sort order (for score trend). */
+function lastCompletedBefore(sorted: RunGroupRun[], currentIndex: number): RunGroupRun | undefined {
+  for (let i = currentIndex - 1; i >= 0; i--) {
+    if (sorted[i].status === "completed") return sorted[i];
+  }
+  return undefined;
+}
+
+/** Bar + caption while a run group is executing (polling updates this). */
+function runGroupProgressUi(g: RunGroup): { barPct: number; caption: string } {
+  const rows = sortedIterations(g.iterations);
+  const n = Math.max(1, rows.length);
+  const completed = rows.filter((r) => r.status === "completed").length;
+  const running = rows.find((r) => r.status === "running");
+  let barPct = Math.round((completed / n) * 100);
+  if (running) {
+    barPct = Math.min(99, Math.round(((completed + 0.5) / n) * 100));
+  }
+  if (g.status === "completed") {
+    barPct = 100;
+  }
+  let caption: string;
+  if (g.status === "completed") {
+    caption = `All ${n} iterations finished`;
+  } else if (running) {
+    caption = `Running iteration ${running.iteration} of ${n} · ${completed} completed so far`;
+  } else if (g.status === "running" || g.status === "pending") {
+    caption = `In progress · ${completed}/${n} iterations complete`;
+  } else {
+    caption = `${completed}/${n} iterations complete`;
+  }
+  return { barPct, caption };
+}
 
 export default function App() {
-  const [cfg, setCfg] = useState(() => loadConfig());
-  const [runs, setRuns] = useState<RunRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
   const [code, setCode] = useState("package main\n\nfunc main() {}\n");
   const [prompt, setPrompt] = useState("");
   const [runLoading, setRunLoading] = useState(false);
-  const [runSummary, setRunSummary] = useState<LoopSummary | null>(null);
+  const [runSummary, setRunSummary] = useState<RunStartResponse | null>(null);
 
-  const [groups, setGroups] = useState<RunGroup[]>([]);
-  const [groupsLoading, setGroupsLoading] = useState(false);
+  /** Newest run group (always from API page 1). */
+  const [recentRunGroup, setRecentRunGroup] = useState<RunGroup | null>(null);
+  /** Paginated list for “All Evaluations”. */
+  const [listRunGroups, setListRunGroups] = useState<RunGroup[]>([]);
+  const [listTotal, setListTotal] = useState(0);
+  const [listPageSize, setListPageSize] = useState(5);
+  const [evalPage, setEvalPage] = useState(1);
+
+  const [groupsLoading, setGroupsLoading] = useState(true);
   const [groupsError, setGroupsError] = useState<string | null>(null);
+  const [selectedRunGroupId, setSelectedRunGroupId] = useState<number | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const chartRef = useRef<Chart | null>(null);
 
-  const scoreSeries = useMemo(() => runs.map((r) => r.score), [runs]);
-  const labels = useMemo(() => runs.map((r) => r.iteration), [runs]);
-
-  async function refreshRuns() {
-    setLoading(true);
-    setError(null);
-    try {
-      const json = await api.getRuns();
-      setRuns(json.runs || []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Unknown error");
-    } finally {
-      setLoading(false);
+  const refreshGroups = useCallback(async (silent = false, listPageOverride?: number) => {
+    const listPage = listPageOverride ?? evalPage;
+    if (!silent) {
+      setGroupsLoading(true);
+      setGroupsError(null);
     }
-  }
-
-  async function refreshGroups() {
-    setGroupsLoading(true);
-    setGroupsError(null);
     try {
-      const json = await api.getRunGroups(20, 0);
-      setGroups(json.groups || []);
+      const [firstPage, listResp] = await Promise.all([api.getRunGroups(1), api.getRunGroups(listPage)]);
+      setRecentRunGroup(firstPage.groups?.[0] ?? null);
+      setListRunGroups(listResp.groups || []);
+      setListTotal(listResp.total);
+      setListPageSize(listResp.page_size || 5);
     } catch (e) {
       setGroupsError(e instanceof Error ? e.message : "Unknown error");
     } finally {
-      setGroupsLoading(false);
+      if (!silent) {
+        setGroupsLoading(false);
+      }
     }
-  }
+  }, [evalPage]);
 
   useEffect(() => {
-    refreshRuns();
-  }, []);
+    void refreshGroups(false);
+  }, [refreshGroups]);
+
+  useEffect(() => {
+    if (listTotal === 0) return;
+    const max = Math.max(1, Math.ceil(listTotal / Math.max(1, listPageSize)));
+    if (evalPage > max) setEvalPage(max);
+  }, [listTotal, listPageSize, evalPage]);
+
+  useEffect(() => {
+    let stopped = false;
+    const t = window.setInterval(() => {
+      if (stopped) return;
+      void refreshGroups(true);
+    }, POLL_MS);
+    return () => {
+      stopped = true;
+      window.clearInterval(t);
+    };
+  }, [refreshGroups]);
+
+  const chartLabels = useMemo(() => [1, 2, 3, 4, 5], []);
+  const chartScores = useMemo(() => {
+    if (!recentRunGroup?.iterations?.length) return [null, null, null, null, null] as (number | null)[];
+    const out: (number | null)[] = [null, null, null, null, null];
+    for (const it of recentRunGroup.iterations) {
+      const i = it.iteration;
+      if (i >= 1 && i <= 5 && it.status === "completed") {
+        out[i - 1] = it.score;
+      }
+    }
+    return out;
+  }, [recentRunGroup]);
+
+  const totalListPages = Math.max(1, Math.ceil(listTotal / Math.max(1, listPageSize)));
 
   useEffect(() => {
     if (!canvasRef.current) return;
-
     const ctx = canvasRef.current.getContext("2d");
     if (!ctx) return;
 
-    // Update chart on runs changes.
     if (chartRef.current) {
       chartRef.current.destroy();
       chartRef.current = null;
     }
 
+    const data = chartScores.map((v) => (v === null ? null : v)) as (number | null)[];
+
     chartRef.current = new Chart(ctx, {
       type: "line",
       data: {
-        labels,
+        labels: chartLabels.map(String),
         datasets: [
           {
-            label: "Avg Score",
-            data: scoreSeries,
-            borderColor: "rgba(56, 189, 248, 1)",
-            backgroundColor: "rgba(56, 189, 248, 0.15)",
+            label: "Score",
+            data,
+            borderColor: "rgba(14, 99, 156, 1)",
+            backgroundColor: "rgba(14, 99, 156, 0.12)",
             borderWidth: 2,
             pointRadius: 4,
-            tension: 0.25,
+            tension: 0.2,
+            spanGaps: false,
           },
         ],
       },
       options: {
         responsive: true,
+        maintainAspectRatio: false,
         plugins: {
           legend: { display: true },
-          tooltip: { enabled: true },
         },
         scales: {
+          x: { title: { display: true, text: "Iteration" } },
           y: {
             beginAtZero: true,
             suggestedMax: 15,
+            title: { display: true, text: "Score" },
           },
         },
       },
@@ -103,198 +210,323 @@ export default function App() {
         chartRef.current = null;
       }
     };
-  }, [labels, scoreSeries]);
+  }, [chartLabels, chartScores]);
 
-  async function onRun() {
+  async function onSubmit() {
     setRunLoading(true);
     setRunSummary(null);
-    setError(null);
+    setGroupsError(null);
     try {
       const summary = await api.run(code, prompt);
       setRunSummary(summary);
-      await refreshRuns();
-      await refreshGroups();
+      setEvalPage(1);
+      await refreshGroups(true, 1);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Unknown error");
+      setGroupsError(e instanceof Error ? e.message : "Unknown error");
     } finally {
       setRunLoading(false);
     }
   }
 
-  function onSaveConfig() {
-    saveConfig(cfg);
-    setCfg(loadConfig());
+  function toggleExpand(id: number) {
+    setSelectedRunGroupId((prev) => (prev === id ? null : id));
   }
 
-  function onResetConfig() {
-    clearConfig();
-    setCfg(loadConfig());
+  function renderIterationRows(iterations: RunGroupRun[] | undefined) {
+    const rows = sortedIterations(iterations);
+    const dash = "—";
+    return rows.map((it, idx) => {
+      const prev = lastCompletedBefore(rows, idx);
+      let trend: React.ReactNode = "—";
+      if (it.status === "completed" && prev) {
+        const d = it.score - prev.score;
+        if (d > 0) {
+          trend = (
+            <span className="trend-up" title={`Improved vs iteration ${prev.iteration}`}>
+              Good · +{d}
+            </span>
+          );
+        } else if (d < 0) {
+          trend = (
+            <span className="trend-down" title={`Lower than iteration ${prev.iteration}`}>
+              {d}
+            </span>
+          );
+        } else {
+          trend = (
+            <span className="trend-same" title="Same score as previous completed iteration">
+              Same
+            </span>
+          );
+        }
+      } else if (it.status === "completed" && !prev) {
+        trend = <span className="muted">Baseline</span>;
+      }
+
+      return (
+        <tr key={it.iteration}>
+          <td>{it.iteration}</td>
+          <td>{it.status}</td>
+          <td title={metricTitle(it.specificity, "specificity")}>{fmtMetricQual(it.specificity, "specificity")}</td>
+          <td title={metricTitle(it.actionability, "actionability")}>{fmtMetricQual(it.actionability, "actionability")}</td>
+          <td title={metricTitle(it.severity, "severity")}>{fmtMetricQual(it.severity, "severity")}</td>
+          <td title={metricTitle(it.structure, "structure")}>{fmtMetricQual(it.structure, "structure")}</td>
+          <td title={it.status === "completed" ? `Score: ${it.score}` : undefined}>
+            {it.status === "completed" ? it.score : dash}
+          </td>
+          <td>{trend}</td>
+        </tr>
+      );
+    });
+  }
+
+  function renderRunProgressBlock(g: RunGroup) {
+    const { barPct, caption } = runGroupProgressUi(g);
+    return (
+      <div className="run-progress" role="status" aria-live="polite">
+        <div className="run-progress-track" aria-hidden>
+          <div className="run-progress-fill" style={{ width: `${barPct}%` }} />
+        </div>
+        <div className="run-progress-caption muted">{caption}</div>
+      </div>
+    );
+  }
+
+  /** Compact page list: 1 … 4 5 6 … 10 */
+  function pageNumbersToShow(current: number, total: number): (number | "ellipsis")[] {
+    if (total <= 7) {
+      return Array.from({ length: total }, (_, i) => i + 1);
+    }
+    const out: (number | "ellipsis")[] = [];
+    const edge = new Set([1, 2, total - 1, total, current - 1, current, current + 1].filter((n) => n >= 1 && n <= total));
+    const sorted = [...edge].sort((a, b) => a - b);
+    let prev = 0;
+    for (const n of sorted) {
+      if (prev && n - prev > 1) out.push("ellipsis");
+      out.push(n);
+      prev = n;
+    }
+    return out;
+  }
+
+  function renderPagination() {
+    if (listTotal === 0 || totalListPages <= 1) return null;
+    const pages = pageNumbersToShow(evalPage, totalListPages);
+    return (
+      <div className="pagination-bar" role="navigation" aria-label="Evaluation list pages">
+        <button type="button" disabled={evalPage <= 1 || groupsLoading} onClick={() => setEvalPage((p) => Math.max(1, p - 1))}>
+          Previous
+        </button>
+        {pages.map((p, i) =>
+          p === "ellipsis" ? (
+            <span key={`e-${i}`} className="page-ellipsis">
+              …
+            </span>
+          ) : (
+            <button
+              key={p}
+              type="button"
+              className={p === evalPage ? "page-active" : undefined}
+              disabled={groupsLoading}
+              onClick={() => setEvalPage(p)}
+              aria-current={p === evalPage ? "page" : undefined}
+            >
+              {p}
+            </button>
+          ),
+        )}
+        <button
+          type="button"
+          disabled={evalPage >= totalListPages || groupsLoading}
+          onClick={() => setEvalPage((p) => Math.min(totalListPages, p + 1))}
+        >
+          Next
+        </button>
+      </div>
+    );
   }
 
   return (
     <div className="container">
       <h1>Self-Improving Code Review Bot</h1>
 
-      <div className="card">
-        <h3 style={{ marginTop: 0 }}>Backend Settings</h3>
-        <div className="row">
-          <div style={{ flex: "1 1 320px" }}>
-            <label className="muted">API Base URL</label>
-            <input
-              value={cfg.apiBaseUrl}
-              onChange={(e) => setCfg((c) => ({ ...c, apiBaseUrl: e.target.value }))}
-              placeholder="http://localhost:8080"
-              style={{ width: "100%" }}
-            />
-          </div>
-          <div style={{ flex: "1 1 220px" }}>
-            <label className="muted">Basic Auth Username</label>
-            <input
-              value={cfg.auth.username}
-              onChange={(e) => setCfg((c) => ({ ...c, auth: { ...c.auth, username: e.target.value } }))}
-              style={{ width: "100%" }}
-            />
-          </div>
-          <div style={{ flex: "1 1 220px" }}>
-            <label className="muted">Basic Auth Password</label>
-            <input
-              value={cfg.auth.password}
-              onChange={(e) => setCfg((c) => ({ ...c, auth: { ...c.auth, password: e.target.value } }))}
-              type="password"
-              style={{ width: "100%" }}
-            />
-          </div>
-        </div>
-        <div className="row" style={{ marginTop: 12 }}>
-          <button onClick={onSaveConfig}>Save settings</button>
-          <button className="secondary" onClick={onResetConfig}>
-            Reset
-          </button>
-          <button className="secondary" onClick={() => { refreshRuns(); refreshGroups(); }}>
-            Refresh
-          </button>
-        </div>
-        <div className="muted" style={{ marginTop: 8, fontSize: 12 }}>
-          Tip: you can also set defaults via `VITE_API_URL`, `VITE_AUTH_USERNAME`, `VITE_AUTH_PASSWORD`.
-        </div>
-      </div>
-
-      <div className="card">
-        <h3 style={{ marginTop: 0 }}>Trigger a Run</h3>
-        <div className="row" style={{ alignItems: "flex-start" }}>
-          <div style={{ flex: "1 1 420px" }}>
-            <label className="muted">Code</label>
-            <textarea
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              rows={10}
-              style={{ width: "100%", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}
-            />
-          </div>
-          <div style={{ flex: "1 1 420px" }}>
+      {/* Part 1: Top — submit + latest evaluation */}
+      <div className="grid-two">
+        <div className="card">
+          <h2>Submit Code for Evaluation</h2>
+          <textarea
+            className="code-input"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            spellCheck={false}
+          />
+          <div style={{ marginTop: 10 }}>
             <label className="muted">Extra prompt (optional)</label>
             <textarea
+              className="prompt-input"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              rows={10}
-              style={{ width: "100%" }}
             />
           </div>
-        </div>
-        <div className="row" style={{ marginTop: 12 }}>
-          <button onClick={onRun} disabled={runLoading}>
-            {runLoading ? "Running..." : "POST /run"}
+          <button className="btn-primary" type="button" disabled={runLoading} onClick={() => void onSubmit()}>
+            {runLoading ? "Submitting…" : "Run Evaluation"}
           </button>
+          {runSummary ? (
+            <div className="muted" style={{ marginTop: 10 }}>
+              Started run group <strong>{runSummary.run_group_id}</strong> ({runSummary.status})
+            </div>
+          ) : null}
         </div>
-        {runSummary ? (
-          <div className="muted" style={{ marginTop: 8 }}>
-            Run complete. Group ID: <b>{runSummary.group_id}</b>
-          </div>
-        ) : null}
+
+        <div className="card">
+          <h2>Recent Evaluations</h2>
+          {groupsLoading && !recentRunGroup ? (
+            <div className="muted">Loading…</div>
+          ) : groupsError && !recentRunGroup ? (
+            <div className="error">{groupsError}</div>
+          ) : !recentRunGroup ? (
+            <div className="muted">No evaluation yet. Submit code to start.</div>
+          ) : (
+            <>
+              <div className="muted" style={{ marginBottom: 6 }}>
+                Run group #{recentRunGroup.id} · {recentRunGroup.status}
+              </div>
+              {renderRunProgressBlock(recentRunGroup)}
+              <div>
+                <strong>Input code</strong>
+                <div className="input-snippet">{truncate(recentRunGroup.input_code, 400)}</div>
+              </div>
+              <div style={{ overflowX: "auto" }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Iteration</th>
+                      <th>Status</th>
+                      <th>Specificity</th>
+                      <th>Actionability</th>
+                      <th>Severity</th>
+                      <th>Structure</th>
+                      <th>Score</th>
+                      <th>vs prev</th>
+                    </tr>
+                  </thead>
+                  <tbody>{renderIterationRows(recentRunGroup.iterations)}</tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
+      {/* Part 2: Mid — score trend */}
       <div className="card">
-        <div className="row" style={{ alignItems: "flex-start" }}>
-          <div style={{ flex: "1 1 320px" }}>
-            <h3 style={{ marginTop: 0 }}>Run History</h3>
-
-            {loading ? (
-              <div className="muted">Loading runs...</div>
-            ) : error ? (
-              <div className="error">{error}</div>
-            ) : runs.length === 0 ? (
-              <div className="muted">No runs yet. Trigger `POST /run`.</div>
-            ) : (
-              <table>
-                <thead>
-                  <tr>
-                    <th>Iteration</th>
-                    <th>Score</th>
-                    <th>Weakness</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {runs.map((r) => (
-                    <tr key={r.iteration}>
-                      <td>{r.iteration}</td>
-                      <td>{r.score}</td>
-                      <td>{r.weakness}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          <div style={{ flex: "1 1 360px" }}>
-            <h3 style={{ marginTop: 0 }}>Score Trend</h3>
+        <h2>Recent Score Trend</h2>
+        {!recentRunGroup ? (
+          <div className="muted">No data for chart yet.</div>
+        ) : (
+          <div className="chart-wrap">
             <canvas ref={canvasRef} />
-            <div className="muted" style={{ marginTop: 8, fontSize: 12 }}>
-              Scores reflect the per-iteration score of the latest run.
-            </div>
           </div>
-        </div>
+        )}
       </div>
 
+      {/* Part 3: Bottom — all evaluations */}
       <div className="card">
-        <div className="row" style={{ alignItems: "flex-start" }}>
-          <div style={{ flex: "1 1 320px" }}>
-            <h3 style={{ marginTop: 0 }}>Run Groups (Protected)</h3>
-            {groupsLoading ? (
-              <div className="muted">Loading run groups...</div>
-            ) : groupsError ? (
-              <div className="error">{groupsError}</div>
-            ) : groups.length === 0 ? (
-              <div className="muted">No groups yet.</div>
-            ) : (
-              <table>
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Iterations</th>
-                    <th>Created</th>
-                    <th>Runs</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {groups.map((g) => (
-                    <tr key={g.id}>
+        <h2>All Evaluations</h2>
+        {groupsLoading && listRunGroups.length === 0 ? (
+          <div className="muted">Loading…</div>
+        ) : groupsError ? (
+          <div className="error">{groupsError}</div>
+        ) : listRunGroups.length === 0 ? (
+          <div className="muted">No run groups yet.</div>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Run Group ID</th>
+                <th>Status</th>
+                <th>Runs Completed</th>
+                <th>Final Score</th>
+              </tr>
+            </thead>
+            <tbody>
+              {listRunGroups.map((g) => {
+                const completed = g.iterations?.filter((r) => r.status === "completed").length ?? 0;
+                const total = g.iterations?.length ?? 0;
+                const finalScore = finalScoreForGroup(g);
+                const expanded = selectedRunGroupId === g.id;
+                return (
+                  <React.Fragment key={g.id}>
+                    <tr
+                      className="table-row-expand"
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={expanded}
+                      aria-label={`Run group ${g.id}, ${expanded ? "expanded" : "collapsed"}. Press Enter or Space to toggle.`}
+                      onClick={() => toggleExpand(g.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          toggleExpand(g.id);
+                        }
+                      }}
+                    >
                       <td>{g.id}</td>
-                      <td>{g.iterations}</td>
-                      <td>{g.created_at}</td>
-                      <td>{g.runs?.length ?? 0}</td>
+                      <td>{g.status}</td>
+                      <td>
+                        {completed} / {total}
+                      </td>
+                      <td>{finalScore !== undefined ? finalScore : "—"}</td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-            <div className="muted" style={{ marginTop: 8, fontSize: 12 }}>
-              If this shows 401, set username/password above (backend `auth` config).
-            </div>
-          </div>
-        </div>
+                    {expanded ? (
+                      <tr>
+                        <td colSpan={4} style={{ padding: 0, borderBottom: "none" }}>
+                          <div className="expand-panel">
+                            <div className="muted" style={{ marginBottom: 8 }}>
+                              <strong>Input code</strong>
+                            </div>
+                            <pre
+                              style={{
+                                margin: "0 0 16px",
+                                padding: 12,
+                                background: "#fff",
+                                border: "1px solid #e2e5ea",
+                                borderRadius: 4,
+                                fontSize: 12,
+                                overflow: "auto",
+                                maxHeight: 200,
+                              }}
+                            >
+                              {g.input_code}
+                            </pre>
+                            <strong>Iterations</strong>
+                            <table>
+                              <thead>
+                                <tr>
+                                  <th>Iteration</th>
+                                  <th>Status</th>
+                                  <th>Specificity</th>
+                                  <th>Actionability</th>
+                                  <th>Severity</th>
+                                  <th>Structure</th>
+                                  <th>Score</th>
+                                  <th>vs prev</th>
+                                </tr>
+                              </thead>
+                              <tbody>{renderIterationRows(g.iterations)}</tbody>
+                            </table>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : null}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+        {listTotal > 0 ? <div className="pagination-footer">{renderPagination()}</div> : null}
       </div>
     </div>
   );
 }
-

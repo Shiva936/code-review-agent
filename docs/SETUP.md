@@ -41,6 +41,9 @@ The backend loads defaults from `backend/env/default.toml`, and then overrides a
 Recommended environment variables:
 
 - `OPEN_ROUTER_API_KEY`: OpenRouter API key (overrides `open_router_api_key`)
+- `GENERATOR_MODEL`: generation model (overrides `generator_model`)
+- `EVALUATOR_MODEL`: evaluator/judge model (overrides `evaluator_model`)
+- `MAX_EVAL_RETRIES`: evaluator retry count (overrides `max_eval_retries`)
 - `PORT`: HTTP port (overrides `port`)
 - `DATABASE_PATH`: SQLite path (overrides `database_path` if set in TOML)
 - `AUTH_USERNAME`, `AUTH_PASSWORD`: Basic Auth credentials for protected endpoints
@@ -49,6 +52,9 @@ PowerShell example:
 
 ```powershell
 $env:OPEN_ROUTER_API_KEY="your_api_key"
+$env:GENERATOR_MODEL="nvidia/nemotron-3-super-120b-a12b:free"
+$env:EVALUATOR_MODEL="nvidia/nemotron-3-super-120b-a12b:free"
+$env:MAX_EVAL_RETRIES="3"
 $env:PORT="8080"
 $env:AUTH_USERNAME="admin"
 $env:AUTH_PASSWORD="changeme"
@@ -67,11 +73,13 @@ No manual setup required.
 /data/app.db
 ```
 
-If running locally:
+If running locally (from `backend/`):
 
 ```text
 ./data/app.db
 ```
+
+SQLite may also create **`app.db-wal`** and **`app.db-shm`** next to the main file when WAL journaling is enabled—this is one database, not three separate apps.
 
 ---
 
@@ -114,10 +122,10 @@ curl -i -X POST "http://localhost:8080/run" ^
   --data "{\"code\":\"package main\\n\\nfunc main() {}\\n\",\"prompt\":\"\"}"
 ```
 
-Fetch run groups (`/run-groups` is protected by Basic Auth):
+Fetch run groups (`/run-groups` is protected by Basic Auth; pagination uses `page`):
 
 ```bash
-curl -i "http://localhost:8080/run-groups?limit=20&offset=0" -u admin:changeme
+curl -i "http://localhost:8080/run-groups?page=1" -u admin:changeme
 ```
 
 ---
@@ -164,8 +172,10 @@ Build and run backend:
 
 ```bash
 docker build -t self-improving-bot .
-docker run -p 8080:8080 -e OPENROUTER_API_KEY=your_key self-improving-bot
+docker run -p 8080:8080 -e OPEN_ROUTER_API_KEY=your_key self-improving-bot
 ```
+
+(Use the same env var name as in local setup: `OPEN_ROUTER_API_KEY` unless your image maps it differently.)
 
 ---
 
@@ -191,13 +201,19 @@ docker run -p 8080:8080 -e OPENROUTER_API_KEY=your_key self-improving-bot
 
 ---
 
-## ❌ Scores Not Improving
+## ❌ Scores Flat Across Iterations
 
-**Cause:** Weak refinement
-**Fix:**
+**Cause:** Models may collapse to similar outputs; older builds ignored user code or stalled the refiner.
 
-- Ensure correct weakness categories
-- Verify prompt updates are applied
+**Fix (current behavior):**
+
+- Submit **non-empty** code you care about; the loop reviews **your** snippet.
+- The pipeline uses **iteration-aware** generation/evaluation (previous review + prior rubric total), **non-zero temperature** on LLM calls, and **reinforcement** when the same weakness repeats.
+- If scores still barely move, try another model in code or add detail in the optional **extra prompt** field.
+
+For architectural context on agent loops and scoring hooks, see `README.md` (learning references) and `docs/ARCHITECTURE.md`.
+
+If backend logs show **`EVALUATOR_FALLBACK`** on every sample, the judge JSON failed validation after retries—check OpenRouter errors in logs. Older builds used strict JSON decoding that rejected valid extra keys and **always** fell back to the same 9/15 score each iteration.
 
 ---
 

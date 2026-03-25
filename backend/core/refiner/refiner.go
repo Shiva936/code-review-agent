@@ -1,13 +1,19 @@
 package refiner
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/Shiva936/code-review-agent/backend/config"
 )
 
-// ruleMap defines the specific rules for each weakness category
+// ruleMap defines refinement rules. Issue categories (spec): logic, performance, security, style.
+// Rubric dimensions (legacy): actionability, specificity, severity.
 var ruleMap = map[string]string{
+	"logic":         "Strengthen logic analysis: control flow, edge cases, correctness, and error paths.",
+	"performance":   "Strengthen performance analysis: allocations, complexity, I/O, and hot paths.",
+	"security":      "Strengthen security analysis: injection, secrets, authn/z, and unsafe APIs.",
+	"style":         "Strengthen style and maintainability: naming, structure, consistency, and readability.",
 	"specificity":   "Always reference variable names and code lines",
 	"actionability": "Each comment must include a clear fix",
 	"severity":      "Assign correct severity labels",
@@ -15,30 +21,28 @@ var ruleMap = map[string]string{
 }
 
 // Refine updates the prompt based on identified weaknesses and manages rules.
-func Refine(cfg *config.Config, prompt string, weakness string, existingRules []string) (string, []string) {
-	// Get the rule for this weakness category
+// If the same weakness repeats, an escalating reinforcement line is added so the prompt
+// does not stall across iterations.
+func Refine(cfg *config.Config, prompt string, weakness string, existingRules []string, iteration int) (string, []string) {
+	_ = cfg
 	rule, exists := ruleMap[weakness]
 	if !exists {
-		// If weakness is not recognized, return unchanged
 		return prompt, existingRules
 	}
 
-	// Check if this rule already exists
 	for _, existingRule := range existingRules {
 		if strings.TrimSpace(existingRule) == strings.TrimSpace(rule) {
-			// Rule already exists, return unchanged
-			return prompt, existingRules
+			reinforcement := fmt.Sprintf("Reinforcement (iteration %d): apply %s feedback more strictly than the previous review.", iteration, weakness)
+			updatedRules := append(existingRules, reinforcement)
+			return addRuleToPrompt(prompt, reinforcement), updatedRules
 		}
 	}
 
-	// Add the new rule to the rules list
 	updatedRules := make([]string, len(existingRules)+1)
 	copy(updatedRules, existingRules)
 	updatedRules[len(existingRules)] = rule
 
-	// Update the prompt with the new rule
 	refinedPrompt := addRuleToPrompt(prompt, rule)
-
 	return refinedPrompt, updatedRules
 }
 

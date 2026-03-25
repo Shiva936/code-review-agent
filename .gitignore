@@ -24,7 +24,7 @@
 # ----------------------------
 # Go Backend
 # ----------------------------
-
+/backend/data/
 /backend/bin/
 /backend/env/dev.toml
 /backend/build/

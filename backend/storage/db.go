@@ -63,14 +63,35 @@ func InitDB(cfg *config.Config) error {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
 
+	// SQLite performs best (and avoids SQLITE_BUSY under concurrent reads/writes)
+	// when we keep a single connection + WAL + a busy timeout.
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+
 	// Test the connection
 	if err := db.Ping(); err != nil {
 		return fmt.Errorf("failed to ping database: %w", err)
 	}
 
+	// Pragmas for better concurrency. These are safe to run repeatedly.
+	if _, err := db.Exec(`PRAGMA journal_mode=WAL;`); err != nil {
+		return fmt.Errorf("failed to enable WAL mode: %w", err)
+	}
+	if _, err := db.Exec(`PRAGMA busy_timeout=5000;`); err != nil {
+		return fmt.Errorf("failed to set busy_timeout: %w", err)
+	}
+
 	// Create tables
 	if err := createTables(); err != nil {
 		return fmt.Errorf("failed to create tables: %w", err)
+	}
+
+	// Lightweight migrations to keep existing DBs compatible.
+	if err := migrateRunGroupsTable(); err != nil {
+		return fmt.Errorf("failed to migrate run_groups table: %w", err)
+	}
+	if err := migrateRunGroupRunsTable(); err != nil {
+		return fmt.Errorf("failed to migrate run_group_runs table: %w", err)
 	}
 
 	return nil
@@ -113,7 +134,9 @@ func createTables() error {
 		input_code TEXT NOT NULL,
 		base_prompt TEXT NOT NULL,
 		iterations INTEGER NOT NULL,
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		status TEXT NOT NULL DEFAULT 'pending',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	)`
 
 	if _, err := db.Exec(runGroupsTable); err != nil {
@@ -128,12 +151,114 @@ func createTables() error {
 		iteration INTEGER NOT NULL,
 		score INTEGER NOT NULL,
 		weakness TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'pending',
+		detail_json TEXT,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY(group_id) REFERENCES run_groups(id)
 	)`
 
 	if _, err := db.Exec(runGroupRunsTable); err != nil {
 		return fmt.Errorf("failed to create run_group_runs table: %w", err)
+	}
+
+	return nil
+}
+
+func migrateRunGroupsTable() error {
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	cols := map[string]bool{}
+	rows, err := db.Query(`PRAGMA table_info(run_groups)`)
+	if err != nil {
+		return fmt.Errorf("failed to read run_groups schema: %w", err)
+	}
+	defer rows.Close()
+
+	// PRAGMA table_info returns: cid, name, type, notnull, dflt_value, pk
+	for rows.Next() {
+		var cid int
+		var name string
+		var typ string
+		var notnull int
+		var dflt sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
+			return fmt.Errorf("failed to scan run_groups schema: %w", err)
+		}
+		cols[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("error iterating run_groups schema: %w", err)
+	}
+
+	// Add missing columns without breaking existing rows.
+	if !cols["status"] {
+		if _, err := db.Exec(`ALTER TABLE run_groups ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'`); err != nil {
+			return fmt.Errorf("failed to add status column: %w", err)
+		}
+	}
+	if !cols["updated_at"] {
+		// SQLite ALTER TABLE only supports constant defaults in many builds.
+		// We add the column without a default and backfill it for existing rows.
+		if _, err := db.Exec(`ALTER TABLE run_groups ADD COLUMN updated_at DATETIME`); err != nil {
+			return fmt.Errorf("failed to add updated_at column: %w", err)
+		}
+		if _, err := db.Exec(`UPDATE run_groups SET updated_at = created_at WHERE updated_at IS NULL`); err != nil {
+			return fmt.Errorf("failed to backfill updated_at column: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func migrateRunGroupRunsTable() error {
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	cols := map[string]bool{}
+	rows, err := db.Query(`PRAGMA table_info(run_group_runs)`)
+	if err != nil {
+		return fmt.Errorf("failed to read run_group_runs schema: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid int
+		var name string
+		var typ string
+		var notnull int
+		var dflt sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
+			return fmt.Errorf("failed to scan run_group_runs schema: %w", err)
+		}
+		cols[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("error iterating run_group_runs schema: %w", err)
+	}
+
+	if !cols["status"] {
+		if _, err := db.Exec(`ALTER TABLE run_group_runs ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'`); err != nil {
+			return fmt.Errorf("failed to add run_group_runs.status: %w", err)
+		}
+	}
+	if !cols["updated_at"] {
+		if _, err := db.Exec(`ALTER TABLE run_group_runs ADD COLUMN updated_at DATETIME`); err != nil {
+			return fmt.Errorf("failed to add run_group_runs.updated_at: %w", err)
+		}
+		if _, err := db.Exec(`UPDATE run_group_runs SET updated_at = created_at WHERE updated_at IS NULL`); err != nil {
+			return fmt.Errorf("failed to backfill run_group_runs.updated_at: %w", err)
+		}
+	}
+	if !cols["detail_json"] {
+		if _, err := db.Exec(`ALTER TABLE run_group_runs ADD COLUMN detail_json TEXT`); err != nil {
+			return fmt.Errorf("failed to add run_group_runs.detail_json: %w", err)
+		}
 	}
 
 	return nil

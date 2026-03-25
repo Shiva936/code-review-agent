@@ -7,12 +7,30 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/Shiva936/code-review-agent/backend/config"
 )
 
+// CallOpts configures sampling. Non-zero Temperature reduces mode-collapse (same scores/text every call).
+// Seed (when non-zero) is sent to OpenRouter to reduce duplicate completions across identical-looking prompts.
+type CallOpts struct {
+	Temperature float64
+	TopP        float64 // 0 = omit; e.g. 0.95
+	Seed        int64   // 0 = omit
+}
+
 // CallLLM sends a prompt to the specified model via OpenRouter API.
-func CallLLM(cfg *config.Config, prompt string, model string) (string, error) {
+func CallLLM(cfg *config.Config, requestType string, prompt string, model string) (string, error) {
+	return callLLM(cfg, requestType, prompt, model, nil)
+}
+
+// CallLLMWithOpts is like CallLLM but sets temperature (and future options) on the completion request.
+func CallLLMWithOpts(cfg *config.Config, requestType string, prompt string, model string, opts *CallOpts) (string, error) {
+	return callLLM(cfg, requestType, prompt, model, opts)
+}
+
+func callLLM(cfg *config.Config, requestType string, prompt string, model string, opts *CallOpts) (string, error) {
 	if cfg.OpenRouterAPIKey == "" {
 		return "", fmt.Errorf("OPENROUTER_API_KEY environment variable not set")
 	}
@@ -26,6 +44,17 @@ func CallLLM(cfg *config.Config, prompt string, model string) (string, error) {
 			},
 		},
 	}
+	if opts != nil {
+		if opts.Temperature > 0 {
+			requestBody["temperature"] = opts.Temperature
+		}
+		if opts.TopP > 0 && opts.TopP <= 1 {
+			requestBody["top_p"] = opts.TopP
+		}
+		if opts.Seed != 0 {
+			requestBody["seed"] = opts.Seed
+		}
+	}
 
 	jsonData, err := json.Marshal(requestBody)
 	if err != nil {
@@ -37,10 +66,11 @@ func CallLLM(cfg *config.Config, prompt string, model string) (string, error) {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
+	_ = requestType // reserved for tracing / future logging
 	req.Header.Set("Authorization", "Bearer "+cfg.OpenRouterAPIKey)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 120 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to make request: %w", err)
@@ -52,7 +82,6 @@ func CallLLM(cfg *config.Config, prompt string, model string) (string, error) {
 		return "", fmt.Errorf("failed to read response: %w", err)
 	}
 
-	// Log raw response for debugging
 	log.Printf("OpenRouter API response: %s", string(body))
 
 	if resp.StatusCode != http.StatusOK {

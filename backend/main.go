@@ -21,6 +21,8 @@ func main() {
 		log.Fatalf("failed to init db: %v", err)
 	}
 
+	log.Println("config : ", cfg.Env, cfg.OpenRouterAPIKey)
+
 	handlers := router.Init(cfg)
 	addr := fmt.Sprintf(":%s", cfg.Port)
 	log.Printf("Server running on port %s\n", cfg.Port)

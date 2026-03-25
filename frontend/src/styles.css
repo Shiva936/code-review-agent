@@ -1,57 +1,251 @@
 body {
   margin: 0;
-  font-family: Arial, Helvetica, sans-serif;
-  background: #0b1220;
-  color: #e6edf3;
+  font-family: system-ui, -apple-system, "Segoe UI", Arial, Helvetica, sans-serif;
+  background: #e8eaed;
+  color: #1a1a1a;
 }
 
 .container {
-  max-width: 900px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 24px;
 }
 
 h1 {
-  font-size: 20px;
-  margin: 0 0 16px;
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin: 0 0 20px;
+  color: #111;
 }
 
 .card {
-  background: #111b2e;
-  border: 1px solid #22314f;
-  border-radius: 10px;
-  padding: 16px;
-  margin-bottom: 16px;
+  background: #fff;
+  border: 1px solid #d8dce3;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
-.row {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
+.card h2 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0 0 14px;
+  color: #111;
+}
+
+.grid-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+@media (max-width: 900px) {
+  .grid-two {
+    grid-template-columns: 1fr;
+  }
+}
+
+textarea.code-input {
+  width: 100%;
+  min-height: 220px;
+  padding: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.45;
+  border: 1px solid #c9ced6;
+  border-radius: 6px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+textarea.prompt-input {
+  width: 100%;
+  min-height: 56px;
+  padding: 8px 12px;
+  font-size: 13px;
+  border: 1px solid #c9ced6;
+  border-radius: 6px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.btn-primary {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 10px 28px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #fff;
+  background: #e85d04;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.btn-primary:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
+  font-size: 13px;
 }
 
 th,
 td {
-  padding: 10px;
-  border-bottom: 1px solid #22314f;
+  padding: 8px 10px;
+  border-bottom: 1px solid #e2e5ea;
   text-align: left;
+  vertical-align: top;
 }
 
 th {
-  color: #b7c4dd;
+  color: #444;
   font-weight: 600;
+  background: #f4f5f7;
+}
+
+tr:hover td {
+  background: #fafbfc;
 }
 
 .error {
-  color: #ffb3b3;
+  color: #b42318;
+  font-size: 13px;
 }
 
 .muted {
-  color: #b7c4dd;
+  color: #5c6370;
+  font-size: 13px;
 }
 
+.input-snippet {
+  font-size: 12px;
+  padding: 8px 10px;
+  background: #f4f5f7;
+  border: 1px solid #e2e5ea;
+  border-radius: 4px;
+  margin-bottom: 12px;
+  word-break: break-all;
+  max-height: 72px;
+  overflow: auto;
+}
+
+.chart-wrap {
+  min-height: 260px;
+  position: relative;
+}
+
+.expand-panel {
+  padding: 12px 16px;
+  background: #f8f9fa;
+  border-top: 1px solid #e2e5ea;
+}
+
+.table-row-expand {
+  cursor: pointer;
+}
+
+.table-row-expand:hover td {
+  background: #eef1f5;
+}
+
+.table-row-expand:focus {
+  outline: 2px solid #0b57d0;
+  outline-offset: -2px;
+}
+
+.expand-panel table {
+  margin-top: 8px;
+}
+
+.run-progress {
+  margin-bottom: 14px;
+}
+
+.run-progress-track {
+  height: 8px;
+  border-radius: 4px;
+  background: #e2e5ea;
+  overflow: hidden;
+}
+
+.run-progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #0e639c, #0b57d0);
+  transition: width 0.35s ease;
+}
+
+.run-progress-caption {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.trend-up {
+  color: #0d652d;
+  font-weight: 600;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.trend-down {
+  color: #b42318;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.trend-same {
+  color: #5c6370;
+  font-size: 12px;
+}
+
+.pagination-footer {
+  margin-top: 14px;
+  padding-top: 4px;
+}
+
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pagination-bar button {
+  min-width: 2rem;
+  padding: 6px 10px;
+  font-size: 13px;
+  border: 1px solid #c9ced6;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  color: #333;
+}
+
+.pagination-bar button:hover:not(:disabled) {
+  background: #f0f2f5;
+}
+
+.pagination-bar button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pagination-bar button.page-active {
+  background: #0b57d0;
+  border-color: #0b57d0;
+  color: #fff;
+  font-weight: 600;
+}
+
+.pagination-bar .page-ellipsis {
+  padding: 6px 4px;
+  font-size: 13px;
+  color: #5c6370;
+  user-select: none;
+}

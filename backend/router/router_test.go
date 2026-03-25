@@ -127,6 +127,38 @@ func TestRun_BadRequest_InvalidJSON(t *testing.T) {
 	}
 }
 
+func TestRun_AsyncStarted(t *testing.T) {
+	cfg := newTestConfig(t)
+	h := Init(cfg)
+
+	// Stub the async processor so tests are fast and deterministic.
+	old := processRunGroupAsync
+	processRunGroupAsync = func(cfg *config.Config, runGroupID int, code string, extraPrompt string) {
+		_ = storage.UpdateRunGroupStatus(runGroupID, "completed")
+		_ = storage.SaveRunGroupRun(runGroupID, 1, 9, "actionability")
+	}
+	t.Cleanup(func() { processRunGroupAsync = old })
+
+	req := httptest.NewRequest(http.MethodPost, "/run", bytes.NewBufferString(`{"code":"package main\n\nfunc main() {}\n"}`))
+	req.Header.Set("Authorization", authHeader(cfg.Auth.Username, cfg.Auth.Password))
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var out map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if out["status"] != "started" {
+		t.Fatalf("expected status started, got %v", out["status"])
+	}
+	if _, ok := out["run_group_id"]; !ok {
+		t.Fatalf("expected run_group_id in response")
+	}
+}
+
 func TestRunGroups_Unauthorized(t *testing.T) {
 	cfg := newTestConfig(t)
 	h := Init(cfg)

@@ -1,9 +1,12 @@
-# Default configuration for newsletter service
-env = "default"
+# Default configuration for code review agent
+env = "dev"
 port = "8080"
 
 # OpenRouter API key for LLM providers (e.g. OpenAI, Azure, etc.)
 open_router_api_key = "your-open-router-api-key"
+generator_model = "nvidia/nemotron-3-super-120b-a12b:free"
+evaluator_model = "nvidia/nemotron-3-super-120b-a12b:free"
+max_eval_retries = 3
 
 [auth]
 username = "admin"

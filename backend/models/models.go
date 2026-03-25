@@ -30,10 +30,16 @@ type Run struct {
 }
 
 // EvalResult represents the evaluation score breakdown.
+// Rubric (15 pts): actionability, specificity, severity (each 1–5).
+// Issue-category scores (each 1–5): how well the review covers quality comments in that bucket.
 type EvalResult struct {
-	Actionability    int
-	Specificity      int
-	Severity         int
-	Total            int
-	WeaknessCategory string
+	Actionability    int    `json:"actionability"`
+	Specificity      int    `json:"specificity"`
+	Severity         int    `json:"severity"`
+	Total            int    `json:"total"`
+	WeaknessCategory string `json:"weakness_category"`
+	Logic            int    `json:"logic"`
+	Performance      int    `json:"performance"`
+	Security         int    `json:"security"`
+	Style            int    `json:"style"`
 }

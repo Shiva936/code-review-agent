@@ -16,6 +16,9 @@ type Config struct {
 	Port             string          `toml:"port"`
 	DatabasePath     string          `toml:"database_path"`
 	OpenRouterAPIKey string          `toml:"open_router_api_key"`
+	GeneratorModel   string          `toml:"generator_model"`
+	EvaluatorModel   string          `toml:"evaluator_model"`
+	MaxEvalRetries   int             `toml:"max_eval_retries"`
 	Auth             AuthConfig      `toml:"auth"`
 	RateLimit        RateLimitConfig `toml:"rate_limit"`
 }

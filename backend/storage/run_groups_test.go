@@ -18,7 +18,7 @@ func TestRunGroups_CRUD(t *testing.T) {
 		_ = Close()
 	})
 
-	groupID, err := CreateRunGroup("code", "prompt", 5)
+	groupID, err := CreateRunGroup("code", "prompt", 5, "pending")
 	if err != nil {
 		t.Fatalf("CreateRunGroup failed: %v", err)
 	}
@@ -44,6 +44,9 @@ func TestRunGroups_CRUD(t *testing.T) {
 	}
 	if len(groups) != 1 {
 		t.Fatalf("expected 1 group, got %d", len(groups))
+	}
+	if groups[0].Status == "" {
+		t.Fatalf("expected status to be set")
 	}
 
 	runs, err := GetRunGroupRuns(groupID)
