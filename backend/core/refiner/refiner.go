@@ -2,6 +2,8 @@ package refiner
 
 import (
 	"strings"
+
+	"github.com/Shiva936/code-review-agent/backend/config"
 )
 
 // ruleMap defines the specific rules for each weakness category
@@ -13,7 +15,7 @@ var ruleMap = map[string]string{
 }
 
 // Refine updates the prompt based on identified weaknesses and manages rules.
-func Refine(prompt string, weakness string, existingRules []string) (string, []string) {
+func Refine(cfg *config.Config, prompt string, weakness string, existingRules []string) (string, []string) {
 	// Get the rule for this weakness category
 	rule, exists := ruleMap[weakness]
 	if !exists {

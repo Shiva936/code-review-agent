@@ -19,12 +19,14 @@
 *.log
 *.tmp
 *.out
+/tmp/
 
 # ----------------------------
 # Go Backend
 # ----------------------------
 
 /backend/bin/
+/backend/env/dev.toml
 /backend/build/
 /backend/vendor/
 *.exe

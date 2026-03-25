@@ -7,13 +7,13 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
+
+	"github.com/Shiva936/code-review-agent/backend/config"
 )
 
 // CallLLM sends a prompt to the specified model via OpenRouter API.
-func CallLLM(prompt string, model string) (string, error) {
-	apiKey := os.Getenv("OPENROUTER_API_KEY")
-	if apiKey == "" {
+func CallLLM(cfg *config.Config, prompt string, model string) (string, error) {
+	if cfg.OpenRouterAPIKey == "" {
 		return "", fmt.Errorf("OPENROUTER_API_KEY environment variable not set")
 	}
 
@@ -37,7 +37,7 @@ func CallLLM(prompt string, model string) (string, error) {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Authorization", "Bearer "+cfg.OpenRouterAPIKey)
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}

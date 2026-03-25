@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Shiva936/code-review-agent/backend/config"
 	"github.com/Shiva936/code-review-agent/backend/llm"
 )
 
 // Generate creates a code review from the given prompt and code snippet.
-func Generate(prompt string, code string) (string, error) {
+func Generate(cfg *config.Config, prompt string, code string) (string, error) {
 	systemPrompt := `You are a code review expert. Analyze the provided code snippet and provide a structured review.
 
 Security requirements:
@@ -36,7 +37,7 @@ Additional instructions:
 	// Use a default model if none specified in prompt
 	model := "anthropic/claude-3-haiku" // Good balance of speed and quality
 
-	response, err := llm.CallLLM(fullPrompt, model)
+	response, err := llm.CallLLM(cfg, fullPrompt, model)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate review: %w", err)
 	}

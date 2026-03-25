@@ -1,0 +1,21 @@
+# Default configuration for newsletter service
+env = "default"
+port = "8080"
+
+# OpenRouter API key for LLM providers (e.g. OpenAI, Azure, etc.)
+open_router_api_key = "your-open-router-api-key"
+
+[auth]
+username = "admin"
+password = "changeme"
+
+[rate_limit]
+enabled = true
+storage = "redis" # "redis" or "memory"
+[rate_limit.default]
+enabled = true
+bucket_size = 100
+refill_size = 10
+refill_duration = "1m"
+identify_by = "ip"     # "ip" or "api_key"
+[rate_limit.routes]

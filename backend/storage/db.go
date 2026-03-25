@@ -7,7 +7,8 @@ import (
 	"path/filepath"
 	"runtime"
 
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/Shiva936/code-review-agent/backend/config"
+	_ "modernc.org/sqlite"
 )
 
 // DB holds the database connection
@@ -28,30 +29,36 @@ type PromptVersion struct {
 }
 
 // InitDB initializes the SQLite database and creates tables if they don't exist.
-func InitDB(dbPath string) error {
-	if dbPath == "" {
+func InitDB(cfg *config.Config) error {
+	if cfg.DatabasePath == "" {
 		// Use environment variable or default path
 		if envPath := os.Getenv("DATABASE_PATH"); envPath != "" {
-			dbPath = envPath
+			cfg.DatabasePath = envPath
 		} else {
 			// In deployments (e.g. Docker / Railway with a mounted volume),
 			// prefer the mounted path.
 			if runtime.GOOS == "windows" {
-				dbPath = "./data/app.db"
+				cfg.DatabasePath = "./data/app.db"
 			} else {
-				dbPath = "/data/app.db"
+				cfg.DatabasePath = "/data/app.db"
 			}
 		}
 	}
 
 	// Ensure directory exists
-	dir := filepath.Dir(dbPath)
+	dir := filepath.Dir(cfg.DatabasePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create database directory: %w", err)
 	}
 
+	// If a previous connection exists (e.g. tests), close it before reopening.
+	if db != nil {
+		_ = db.Close()
+		db = nil
+	}
+
 	var err error
-	db, err = sql.Open("sqlite3", dbPath)
+	db, err = sql.Open("sqlite", cfg.DatabasePath)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
@@ -97,6 +104,36 @@ func createTables() error {
 
 	if _, err := db.Exec(promptsTable); err != nil {
 		return fmt.Errorf("failed to create prompts table: %w", err)
+	}
+
+	// Create run_groups table (grouped run storage)
+	runGroupsTable := `
+	CREATE TABLE IF NOT EXISTS run_groups (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		input_code TEXT NOT NULL,
+		base_prompt TEXT NOT NULL,
+		iterations INTEGER NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`
+
+	if _, err := db.Exec(runGroupsTable); err != nil {
+		return fmt.Errorf("failed to create run_groups table: %w", err)
+	}
+
+	// Create run_group_runs table (per-iteration results for a group)
+	runGroupRunsTable := `
+	CREATE TABLE IF NOT EXISTS run_group_runs (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		group_id INTEGER NOT NULL,
+		iteration INTEGER NOT NULL,
+		score INTEGER NOT NULL,
+		weakness TEXT NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(group_id) REFERENCES run_groups(id)
+	)`
+
+	if _, err := db.Exec(runGroupRunsTable); err != nil {
+		return fmt.Errorf("failed to create run_group_runs table: %w", err)
 	}
 
 	return nil
@@ -193,7 +230,9 @@ func GetPromptVersions() ([]*PromptVersion, error) {
 // Close closes the database connection
 func Close() error {
 	if db != nil {
-		return db.Close()
+		err := db.Close()
+		db = nil
+		return err
 	}
 	return nil
 }

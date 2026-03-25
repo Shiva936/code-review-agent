@@ -8,12 +8,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Shiva936/code-review-agent/backend/config"
 	"github.com/Shiva936/code-review-agent/backend/llm"
 	"github.com/Shiva936/code-review-agent/backend/models"
 )
 
 // Evaluate scores a generated review using the evaluation rubric.
-func Evaluate(review string) (*models.EvalResult, error) {
+func Evaluate(cfg *config.Config, review string) (*models.EvalResult, error) {
 	const maxRetries = 3
 	const defaultModel = "anthropic/claude-3-haiku"
 
@@ -48,7 +49,7 @@ Code Review to evaluate:
 
 	var lastErr error
 	for attempt := 0; attempt <= maxRetries; attempt++ {
-		response, err := llm.CallLLM(fullPrompt, defaultModel)
+		response, err := llm.CallLLM(cfg, fullPrompt, defaultModel)
 		if err != nil {
 			lastErr = fmt.Errorf("LLM call failed: %w", err)
 			if attempt < maxRetries {
