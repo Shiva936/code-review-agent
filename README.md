@@ -4,7 +4,7 @@ A feedback-driven system that improves its own outputs across runs using a **Gen
 
 This project implements a minimal, fully traceable pipeline where a code review agent iteratively enhances its performance by learning from past weaknesses — with persistent state and measurable improvement.
 
-![UI Design](docs/images/UI-Design.png)
+![UI Design](https://github.com/Shiva936/code-review-agent/blob/main/docs/images/UI-Design.png)
 
 ---
 
