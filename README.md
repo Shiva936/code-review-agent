@@ -4,7 +4,7 @@ A feedback-driven system that improves its own outputs across runs using a **Gen
 
 This project implements a minimal, fully traceable pipeline where a code review agent iteratively enhances its performance by learning from past weaknesses — with persistent state and measurable improvement.
 
-![UI Design](./docs/images/UI-Design.png)
+![UI Design](./backend/docs/images/UI-Design.png)
 
 ---
 
@@ -31,16 +31,15 @@ Generate → Evaluate → Refine → Persist → Repeat
 
 ### Generate
 
-* Produces structured code reviews
-* Includes:
-
-  * categorized comments (logic, performance, security, style)
-  * severity labels (critical, minor, suggestion)
+- Produces structured code reviews
+- Includes:
+  - categorized comments (logic, performance, security, style)
+  - severity labels (critical, minor, suggestion)
 
 ### Evaluate
 
-* Uses LLM-as-judge to score output. The judge receives **iteration context** (e.g. iteration 3 of 5, previous rubric total) so it can differentiate runs instead of collapsing to identical middle scores.
-* **Sampling:** generation uses higher **temperature** than evaluation to reduce mode-collapse (same text/scores every call).
+- Uses LLM-as-judge to score output. The judge receives **iteration context** (e.g. iteration 3 of 5, previous rubric total) so it can differentiate runs instead of collapsing to identical middle scores.
+- **Sampling:** generation uses higher **temperature** than evaluation to reduce mode-collapse (same text/scores every call).
 
 | Metric        | Description                            |
 | ------------- | -------------------------------------- |
@@ -52,16 +51,15 @@ Total score: **/15** (sum of the three rubric dimensions)
 
 ### Refine
 
-* Aggregates weakest **issue category** (logic / performance / security / style) across samples
-* Appends a targeted rule to the reviewer prompt; if the same weakness repeats, an **escalating reinforcement** line is added so the prompt keeps changing
+- Aggregates weakest **issue category** (logic / performance / security / style) across samples
+- Appends a targeted rule to the reviewer prompt; if the same weakness repeats, an **escalating reinforcement** line is added so the prompt keeps changing
 
 ### Persist
 
-* Stores:
-
-  * run results
-  * prompt versions
-  * weakness history
+- Stores:
+  - run results
+  - prompt versions
+  - weakness history
 
 ---
 
@@ -110,12 +108,12 @@ backend/data (SQLite; WAL sidecar files may appear next to `app.db`)
 
 # ⚙️ Tech Stack
 
-* **Backend:** Go
-* **Frontend:** React (minimal dashboard)
-* **LLM Provider:** OpenRouter
-* **Models (defaults in config):** `generator_model` and `evaluator_model` in `backend/env/default.toml` (override via `GENERATOR_MODEL` / `EVALUATOR_MODEL`).
-* **Evaluation retries:** `max_eval_retries` in `backend/env/default.toml` (override via `MAX_EVAL_RETRIES`).
-* **Database:** SQLite (WAL mode; see `docs/SETUP.md` for `app.db` / `-wal` / `-shm`)
+- **Backend:** Go
+- **Frontend:** React (minimal dashboard)
+- **LLM Provider:** OpenRouter
+- **Models (defaults in config):** `generator_model` and `evaluator_model` in `backend/env/default.toml` (override via `GENERATOR_MODEL` / `EVALUATOR_MODEL`).
+- **Evaluation retries:** `max_eval_retries` in `backend/env/default.toml` (override via `MAX_EVAL_RETRIES`).
+- **Database:** SQLite (WAL mode; see `docs/SETUP.md` for `app.db` / `-wal` / `-shm`)
 
 ---
 
@@ -157,9 +155,9 @@ Evaluation is handled by an LLM to simulate flexible, human-like scoring.
 
 Instead of blindly modifying prompts, refinement is **category-driven**:
 
-* specificity → enforce references to code elements
-* actionability → enforce clear fixes
-* severity → enforce correct classification
+- specificity → enforce references to code elements
+- actionability → enforce clear fixes
+- severity → enforce correct classification
 
 ---
 
@@ -167,9 +165,9 @@ Instead of blindly modifying prompts, refinement is **category-driven**:
 
 All state is stored:
 
-* run history
-* prompt versions
-* weakness patterns
+- run history
+- prompt versions
+- weakness patterns
 
 This ensures learning survives restarts.
 
@@ -177,9 +175,9 @@ This ensures learning survives restarts.
 
 ### Controlled Loop Execution
 
-* Fixed number of iterations (5)
-* Fully autonomous after trigger
-* No manual intervention
+- Fixed number of iterations (5)
+- Fully autonomous after trigger
+- No manual intervention
 
 ---
 
@@ -238,15 +236,15 @@ This ensures learning survives restarts.
 
 These are useful for how **agentic loops** are structured—task decomposition, evaluation hooks, persistence—not as code to paste into this repo.
 
-* **[AgentHub](https://www.agenthub.dev)** — Browse real agent pipelines; notice where evaluation and branching happen in the loop.
-* **[karpathy/autoresearch](https://github.com/karpathy/autoresearch)** — Research-style autonomous loop with scoring and state; closest public spirit to “close the loop and persist.”
+- **[AgentHub](https://www.agenthub.dev)** — Browse real agent pipelines; notice where evaluation and branching happen in the loop.
+- **[karpathy/autoresearch](https://github.com/karpathy/autoresearch)** — Research-style autonomous loop with scoring and state; closest public spirit to “close the loop and persist.”
 
 **How this project differs (short):**
 
-| | This repo | autoresearch-style systems |
-| --- | --- | --- |
-| Domain | Code review + rubric judge | Research / training experiments |
-| State | SQLite run groups + per-iteration metrics | Varies (checkpoints, logs, etc.) |
+|               | This repo                                              | autoresearch-style systems        |
+| ------------- | ------------------------------------------------------ | --------------------------------- |
+| Domain        | Code review + rubric judge                             | Research / training experiments   |
+| State         | SQLite run groups + per-iteration metrics              | Varies (checkpoints, logs, etc.)  |
 | “Improvement” | Prompt rules + reinforcement + iteration-aware scoring | Task-specific metrics and tooling |
 
 You should be able to **say in your own words** how your loop closes (generate → evaluate → refine → persist) and where the **evaluation hook** sits versus open-ended agent steps.
@@ -255,26 +253,26 @@ You should be able to **say in your own words** how your loop closes (generate �
 
 # 📈 Observations
 
-* Iterations are **designed** to diverge (temperature, prior review context, refiner, judge instructions); **monotonic score increase is not guaranteed** on free or small models.
-* Minor fluctuations are normal; compare **trends** and qualitative review text, not only a single number.
+- Iterations are **designed** to diverge (temperature, prior review context, refiner, judge instructions); **monotonic score increase is not guaranteed** on free or small models.
+- Minor fluctuations are normal; compare **trends** and qualitative review text, not only a single number.
 
 ---
 
 # ⚠️ Limitations
 
-* LLM-based evaluation is heuristic, not deterministic
-* Free-tier models may produce inconsistent formatting
-* Refinement logic is rule-based, not learned
+- LLM-based evaluation is heuristic, not deterministic
+- Free-tier models may produce inconsistent formatting
+- Refinement logic is rule-based, not learned
 
 ---
 
 # ✅ Requirements Checklist
 
-* [x] Generate → Evaluate → Refine loop
-* [x] Persistent state across runs
-* [x] Scores logged across iterations
-* [x] Autonomous execution
-* [x] No external agent frameworks
+- [x] Generate → Evaluate → Refine loop
+- [x] Persistent state across runs
+- [x] Scores logged across iterations
+- [x] Autonomous execution
+- [x] No external agent frameworks
 
 ---
 
