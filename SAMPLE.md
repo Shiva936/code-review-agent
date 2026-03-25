@@ -1,8 +1,8 @@
 # 🧪 SAMPLE.md
 
-This file contains **sample code snippets** used by the system for generating and evaluating code reviews.
+This file contains **sample code snippets** you can use to manually test the system by calling `POST /run`.
 
-These samples are intentionally designed to include **security, logic, and performance issues** to test the effectiveness of the Generate → Evaluate → Refine loop.
+These samples are intentionally designed to include **security, logic, and performance issues** so you can verify the Generate → Evaluate → Refine loop and see meaningful results in `/runs` and `/run-groups`.
 
 ---
 
@@ -81,7 +81,7 @@ func GenerateToken(n int) string {
 
 # 🎯 Purpose
 
-These samples are used to:
+These samples can be used to:
 
 - Test **generation quality** (does the LLM identify real issues?)
 - Test **evaluation accuracy** (are issues scored correctly?)

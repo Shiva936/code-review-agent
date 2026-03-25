@@ -1,6 +1,6 @@
 # ⚙️ SETUP.md
 
-This guide will help you run the **Self-Improving Code Review Bot** locally and deploy it using free-tier services.
+This guide will help you run the **Self-Improving Code Review Bot** locally.
 
 ---
 
@@ -8,7 +8,7 @@ This guide will help you run the **Self-Improving Code Review Bot** locally and 
 
 Make sure you have the following installed:
 
-- Go (>= 1.22)
+- Go (>= 1.25) (matches `backend/go.mod`)
 - Node.js (>= 18)
 - npm or yarn
 - Git
@@ -36,14 +36,22 @@ cd <repo>
 
 ### Backend
 
-```bash
-export OPENROUTER_API_KEY=your_api_key
-```
+The backend loads defaults from `backend/env/default.toml`, and then overrides any fields from environment variables.
 
-Optional:
+Recommended environment variables:
 
-```bash
-export PORT=8080
+- `OPEN_ROUTER_API_KEY`: OpenRouter API key (overrides `open_router_api_key`)
+- `PORT`: HTTP port (overrides `port`)
+- `DATABASE_PATH`: SQLite path (overrides `database_path` if set in TOML)
+- `AUTH_USERNAME`, `AUTH_PASSWORD`: Basic Auth credentials for protected endpoints
+
+PowerShell example:
+
+```powershell
+$env:OPEN_ROUTER_API_KEY="your_api_key"
+$env:PORT="8080"
+$env:AUTH_USERNAME="admin"
+$env:AUTH_PASSWORD="changeme"
 ```
 
 ---
@@ -53,7 +61,7 @@ export PORT=8080
 No manual setup required.
 
 - SQLite DB will be auto-created on first run
-- Default location:
+- Default location (if not configured):
 
 ```text
 /data/app.db
@@ -91,16 +99,25 @@ Health check:
 curl http://localhost:8080/health
 ```
 
-Trigger loop:
-
-```bash
-curl -X POST http://localhost:8080/run
-```
-
-Fetch results:
+Fetch runs:
 
 ```bash
 curl http://localhost:8080/runs
+```
+
+Trigger loop (`/run` is protected by Basic Auth; it also requires a JSON body):
+
+```bash
+curl -i -X POST "http://localhost:8080/run" ^
+  -H "Content-Type: application/json" ^
+  -u admin:changeme ^
+  --data "{\"code\":\"package main\\n\\nfunc main() {}\\n\",\"prompt\":\"\"}"
+```
+
+Fetch run groups (`/run-groups` is protected by Basic Auth):
+
+```bash
+curl -i "http://localhost:8080/run-groups?limit=20&offset=0" -u admin:changeme
 ```
 
 ---
@@ -117,10 +134,12 @@ npm start
 
 # 🔗 8. Connect Frontend to Backend
 
-Create `.env` file inside `frontend/`:
+Create `.env` file inside `frontend/` (optional; you can also set settings in the UI):
 
 ```bash
-REACT_APP_API_URL=http://localhost:8080
+VITE_API_URL=http://localhost:8080
+VITE_AUTH_USERNAME=admin
+VITE_AUTH_PASSWORD=changeme
 ```
 
 Restart frontend after adding env.
@@ -129,13 +148,13 @@ Restart frontend after adding env.
 
 # 📊 9. Using the App
 
-- Open: http://localhost:3000
+- Open the frontend shown in your terminal (Vite default is usually `http://localhost:5173`).
 
 - View:
   - Run history
   - Score progression graph
 
-- Trigger runs via API (or button if implemented)
+- Trigger runs from the UI (POST `/run`) or via curl.
 
 ---
 
@@ -147,47 +166,6 @@ Build and run backend:
 docker build -t self-improving-bot .
 docker run -p 8080:8080 -e OPENROUTER_API_KEY=your_key self-improving-bot
 ```
-
----
-
-# ☁️ Deployment (Free Tier)
-
----
-
-## 🚂 Backend — Railway
-
-1. Push repo to GitHub
-2. Go to Railway → New Project → Deploy from GitHub
-3. Add environment variables:
-
-```text
-OPENROUTER_API_KEY=your_key
-PORT=8080
-```
-
----
-
-### ⚠️ Enable Persistent Storage
-
-- Add volume mount
-- Set DB path to:
-
-```text
-/data/app.db
-```
-
----
-
-## 🌐 Frontend — Vercel
-
-1. Import repo into Vercel
-2. Set environment variable:
-
-```text
-REACT_APP_API_URL=https://your-backend-url
-```
-
-3. Deploy
 
 ---
 

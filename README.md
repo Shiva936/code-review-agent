@@ -83,19 +83,21 @@ Storage (SQLite)
 
 ```text
 /backend
+  /config
   /core
     generator/
     evaluator/
     refiner/
   /llm
   /storage
+  /router
   /models
   main.go
 
 /frontend
   /src
-    /components
-    /pages
+    api.ts
+    config.ts
 
 /data (SQLite or JSON persistence)
 ```
@@ -117,20 +119,13 @@ Storage (SQLite)
 
 # ▶️ How It Works
 
-1. User (or API call) triggers the loop
-2. System processes 3 predefined code snippets
-3. Each snippet is:
-
-   * reviewed
-   * scored
-   * used for refinement
-4. After each iteration:
-
-   * average score is calculated
-   * prompt is updated
-   * results are persisted
-
-The loop runs **autonomously for 5 iterations**.
+1. User (or frontend) triggers `POST /run` with a code snippet
+2. The system runs **5 iterations** on that input
+3. Each iteration:
+   - generates a review
+   - evaluates the review
+   - refines the prompt for the next iteration
+   - persists results
 
 ---
 
@@ -212,7 +207,7 @@ This ensures learning survives restarts.
 ### 4. Denial of Service
 
 **Risk:** Repeated triggering of loop
-**Mitigation:** Single-run lock to prevent concurrent execution
+**Mitigation:** Single-run lock to prevent concurrent execution, plus configurable rate limiting
 
 ---
 

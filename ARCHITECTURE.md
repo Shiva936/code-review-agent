@@ -37,10 +37,9 @@ The loop engine orchestrates the full pipeline:
 
 ```text
 for iteration in 1..5:
-    for each code snippet:
-        review = Generate(prompt, code)
-        score, weakness = Evaluate(review)
-        prompt = Refine(prompt, weakness)
+    review = Generate(prompt, input_code)
+    score, weakness = Evaluate(review)
+    prompt = Refine(prompt, weakness)
     persist results
 ```
 
@@ -171,10 +170,13 @@ prompt_text
 reason_for_update
 ```
 
-#### Patterns Table
+#### Run Groups Tables
+
+The backend also stores user-triggered run groups (one input code snippet, multiple iterations):
 
 ```text
-weakness_category
+run_groups(id, input_code, base_prompt, iterations, created_at)
+run_group_runs(id, group_id, iteration, score, weakness, created_at)
 ```
 
 ### Responsibilities:
@@ -212,6 +214,8 @@ Minimal REST API:
 
 - Triggers full loop execution
 - Returns summary of results
+- Protected by Basic Auth (if configured)
+- Requires JSON body: `{ "code": "...", "prompt": "..." }`
 
 ---
 
@@ -224,6 +228,13 @@ Minimal REST API:
 ### GET /health
 
 - Health check endpoint
+
+---
+
+### GET /run-groups
+
+- Returns paginated run groups with per-iteration results
+- Protected by Basic Auth (if configured)
 
 ---
 
@@ -241,7 +252,7 @@ Provide visibility into system behavior.
 ### Data Flow:
 
 ```text
-Frontend → GET /runs → Backend → SQLite
+Frontend → GET /runs, POST /run, GET /run-groups → Backend → SQLite
 ```
 
 ### Design Principles:
