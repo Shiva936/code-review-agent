@@ -82,7 +82,7 @@ func callLLM(cfg *config.Config, requestType string, prompt string, model string
 		return "", fmt.Errorf("failed to read response: %w", err)
 	}
 
-	log.Printf("OpenRouter API response: %s", string(body))
+	// log.Printf("OpenRouter API response: %s", string(body))
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
