@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Shiva936/code-review-agent/backend/config"
@@ -31,10 +31,28 @@ func CallLLMWithOpts(cfg *config.Config, requestType string, prompt string, mode
 }
 
 func callLLM(cfg *config.Config, requestType string, prompt string, model string, opts *CallOpts) (string, error) {
-	if cfg.OpenRouterAPIKey == "" {
-		return "", fmt.Errorf("OPENROUTER_API_KEY environment variable not set")
+	provider := strings.ToLower(strings.TrimSpace(cfg.Provider))
+	if provider == "" {
+		provider = "openrouter"
 	}
 
+	switch provider {
+	case "gemini":
+		if cfg.GeminiAPIKey == "" {
+			return "", fmt.Errorf("provider=gemini but GEMINI_API_KEY is not set")
+		}
+		return callGemini(cfg, prompt, model, opts)
+	case "openrouter":
+		if cfg.OpenRouterAPIKey == "" {
+			return "", fmt.Errorf("provider=openrouter but OPEN_ROUTER_API_KEY is not set")
+		}
+		return callOpenRouter(cfg, requestType, prompt, model, opts)
+	default:
+		return "", fmt.Errorf("invalid provider %q (expected \"openrouter\" or \"gemini\")", provider)
+	}
+}
+
+func callOpenRouter(cfg *config.Config, requestType string, prompt string, model string, opts *CallOpts) (string, error) {
 	requestBody := map[string]interface{}{
 		"model": model,
 		"messages": []map[string]string{

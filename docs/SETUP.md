@@ -40,6 +40,8 @@ The backend loads defaults from `backend/env/default.toml`, and then overrides a
 
 Recommended environment variables:
 
+- `PROVIDER`: LLM provider selection (`openrouter` or `gemini`)
+- `GEMINI_API_KEY`: Google Gemini API key (required when `PROVIDER=gemini`)
 - `OPEN_ROUTER_API_KEY`: OpenRouter API key (overrides `open_router_api_key`)
 - `GENERATOR_MODEL`: generation model (overrides `generator_model`)
 - `EVALUATOR_MODEL`: evaluator/judge model (overrides `evaluator_model`)
@@ -51,9 +53,11 @@ Recommended environment variables:
 PowerShell example:
 
 ```powershell
+$env:PROVIDER="gemini"
+$env:GEMINI_API_KEY="your_gemini_key"
 $env:OPEN_ROUTER_API_KEY="your_api_key"
-$env:GENERATOR_MODEL="nvidia/nemotron-3-super-120b-a12b:free"
-$env:EVALUATOR_MODEL="nvidia/nemotron-3-super-120b-a12b:free"
+$env:GENERATOR_MODEL="gemini-1.5-flash"
+$env:EVALUATOR_MODEL="gemini-1.5-flash"
 $env:MAX_EVAL_RETRIES="3"
 $env:PORT="8080"
 $env:AUTH_USERNAME="admin"

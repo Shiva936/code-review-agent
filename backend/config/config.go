@@ -15,7 +15,9 @@ type Config struct {
 	Env              string          `toml:"env"`
 	Port             string          `toml:"port"`
 	DatabasePath     string          `toml:"database_path"`
+	Provider         string          `toml:"provider"`
 	OpenRouterAPIKey string          `toml:"open_router_api_key"`
+	GeminiAPIKey     string          `toml:"gemini_api_key"`
 	GeneratorModel   string          `toml:"generator_model"`
 	EvaluatorModel   string          `toml:"evaluator_model"`
 	MaxEvalRetries   int             `toml:"max_eval_retries"`
