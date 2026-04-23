@@ -24,3 +24,11 @@ refill_size = 10
 refill_duration = "1m"
 identify_by = "ip"     # "ip" or "api_key"
 [rate_limit.routes]
+
+[refiner]
+mode = "rule_based"
+model = ""
+temperature = 0.2
+max_rules = 8
+max_rule_chars = 200
+max_delta_ops = 4

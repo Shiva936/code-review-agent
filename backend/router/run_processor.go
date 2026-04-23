@@ -1,6 +1,7 @@
 package router
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -45,12 +46,26 @@ func processRunGroup(cfg *config.Config, runGroupID int, code string, extraPromp
 	if extraPrompt != "" {
 		prompt = prompt + "\n\nAdditional instructions:\n" + extraPrompt
 	}
+	basePromptWithContext := prompt
 	existingRules := []string{}
 	prevReviewBySample := make([]string, len(samples))
 	var prevAggRubric int
 
 	for iter := 1; iter <= iterations; iter++ {
 		_ = storage.UpdateRunGroupRunStatus(runGroupID, iter, "running")
+		prompt = refiner.BuildPrompt(basePromptWithContext, existingRules)
+
+		rulesJSON, _ := json.Marshal(existingRules)
+		if err := storage.SaveRunGroupPromptVersion(&storage.RunGroupPromptVersion{
+			RunGroupID: runGroupID,
+			Iteration:  iter,
+			PromptText: prompt,
+			RulesJSON:  string(rulesJSON),
+			Source:     "active",
+			Reason:     "prompt used for generation/evaluation in this iteration",
+		}); err != nil {
+			log.Printf("run_group %d iter %d: warning: failed to save prompt version: %v", runGroupID, iter, err)
+		}
 
 		results := make([]*models.EvalResult, 0, len(samples))
 		reviewsThisIter := make([]string, len(samples))
@@ -121,7 +136,24 @@ func processRunGroup(cfg *config.Config, runGroupID int, code string, extraPromp
 			log.Printf("run_group %d iter %d: warning: failed to touch updated_at: %v", runGroupID, iter, err)
 		}
 
-		prompt, existingRules = refiner.Refine(cfg, prompt, weakness, existingRules, iter)
+		refineDecision := refiner.RefineWithGuardrails(cfg, basePromptWithContext, weakness, existingRules, iter, string(detailJSON))
+		prompt = refineDecision.Prompt
+		existingRules = refineDecision.Rules
+
+		if err := storage.SaveRunGroupPromptDelta(&storage.RunGroupPromptDelta{
+			RunGroupID:       runGroupID,
+			Iteration:        iter,
+			WeakestIssue:     weakness,
+			InputJSON:        refineDecision.InputJSON,
+			RawOutput:        refineDecision.RawOutput,
+			DeltaJSON:        refineDecision.DeltaJSON,
+			ValidationStatus: refineDecision.ValidationStatus,
+			Applied:          refineDecision.Applied,
+			Source:           refineDecision.Source,
+			Reason:           refineDecision.Reason,
+		}); err != nil {
+			log.Printf("run_group %d iter %d: warning: failed to save prompt delta: %v", runGroupID, iter, err)
+		}
 	}
 
 	if err := storage.UpdateRunGroupStatus(runGroupID, "completed"); err != nil {

@@ -23,6 +23,7 @@ type Config struct {
 	MaxEvalRetries   int             `toml:"max_eval_retries"`
 	Auth             AuthConfig      `toml:"auth"`
 	RateLimit        RateLimitConfig `toml:"rate_limit"`
+	Refiner          RefinerConfig   `toml:"refiner"`
 }
 
 type AuthConfig struct {
@@ -43,6 +44,15 @@ type RateLimitRule struct {
 	RefillDuration time.Duration `toml:"refill_duration"` // How often to refill
 	IdentifyBy     string        `toml:"identify_by"`     // "ip" or "api_key"
 	Enabled        bool          `toml:"enabled"`
+}
+
+type RefinerConfig struct {
+	Mode         string  `toml:"mode"`           // rule_based | hybrid
+	Model        string  `toml:"model"`          // optional; falls back to evaluator model
+	Temperature  float64 `toml:"temperature"`    // LLM refiner temperature
+	MaxRules     int     `toml:"max_rules"`      // active rule budget
+	MaxRuleChars int     `toml:"max_rule_chars"` // per-rule size guard
+	MaxDeltaOps  int     `toml:"max_delta_ops"`  // max add/remove/modify ops per iteration
 }
 
 func NewConfig() *Config {
@@ -141,6 +151,12 @@ func updateFieldValue(field reflect.Value, envVal string) {
 			field.SetBool(boolVal)
 		} else {
 			log.Printf("Warning: invalid boolean for env value: %s", envVal)
+		}
+	case reflect.Float32, reflect.Float64:
+		if floatVal, err := strconv.ParseFloat(envVal, 64); err == nil {
+			field.SetFloat(floatVal)
+		} else {
+			log.Printf("Warning: invalid float for env value: %s", envVal)
 		}
 	case reflect.TypeOf(time.Duration(0)).Kind():
 		if field.Type() == reflect.TypeOf(time.Duration(0)) {

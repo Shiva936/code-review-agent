@@ -93,6 +93,9 @@ func InitDB(cfg *config.Config) error {
 	if err := migrateRunGroupRunsTable(); err != nil {
 		return fmt.Errorf("failed to migrate run_group_runs table: %w", err)
 	}
+	if err := migratePromptArtifactsTables(); err != nil {
+		return fmt.Errorf("failed to migrate prompt artifact tables: %w", err)
+	}
 
 	return nil
 }
@@ -160,6 +163,42 @@ func createTables() error {
 
 	if _, err := db.Exec(runGroupRunsTable); err != nil {
 		return fmt.Errorf("failed to create run_group_runs table: %w", err)
+	}
+
+	promptVersionsTable := `
+	CREATE TABLE IF NOT EXISTS prompt_versions (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		run_group_id INTEGER NOT NULL,
+		iteration INTEGER NOT NULL,
+		prompt_text TEXT NOT NULL,
+		rules_json TEXT,
+		source TEXT NOT NULL DEFAULT 'rule_based',
+		reason TEXT,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(run_group_id) REFERENCES run_groups(id)
+	)`
+	if _, err := db.Exec(promptVersionsTable); err != nil {
+		return fmt.Errorf("failed to create prompt_versions table: %w", err)
+	}
+
+	promptDeltasTable := `
+	CREATE TABLE IF NOT EXISTS prompt_deltas (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		run_group_id INTEGER NOT NULL,
+		iteration INTEGER NOT NULL,
+		weakest_issue TEXT NOT NULL,
+		input_json TEXT,
+		raw_output TEXT,
+		delta_json TEXT,
+		validation_status TEXT NOT NULL,
+		applied INTEGER NOT NULL DEFAULT 0,
+		source TEXT NOT NULL DEFAULT 'rule_based',
+		reason TEXT,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(run_group_id) REFERENCES run_groups(id)
+	)`
+	if _, err := db.Exec(promptDeltasTable); err != nil {
+		return fmt.Errorf("failed to create prompt_deltas table: %w", err)
 	}
 
 	return nil
@@ -261,6 +300,15 @@ func migrateRunGroupRunsTable() error {
 		}
 	}
 
+	return nil
+}
+
+func migratePromptArtifactsTables() error {
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+	// Tables are created in createTables(). This migration hook is kept so future
+	// additive columns can be introduced safely without changing InitDB flow.
 	return nil
 }
 
