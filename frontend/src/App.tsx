@@ -1,6 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Chart from "chart.js/auto";
-import { api, type RunGroup, type RunGroupRun, type RunStartResponse } from "./api";
+import {
+  api,
+  type PromptArtifactsResponse,
+  type RunGroup,
+  type RunGroupRun,
+  type RunStartResponse,
+} from "./api";
 
 const POLL_MS = 2500;
 
@@ -96,6 +102,8 @@ export default function App() {
   const [groupsLoading, setGroupsLoading] = useState(true);
   const [groupsError, setGroupsError] = useState<string | null>(null);
   const [selectedRunGroupId, setSelectedRunGroupId] = useState<number | null>(null);
+  const [promptArtifactsByGroup, setPromptArtifactsByGroup] = useState<Record<number, PromptArtifactsResponse>>({});
+  const [promptArtifactsLoading, setPromptArtifactsLoading] = useState<Record<number, boolean>>({});
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const chartRef = useRef<Chart | null>(null);
@@ -228,8 +236,19 @@ export default function App() {
     }
   }
 
-  function toggleExpand(id: number) {
+  async function toggleExpand(id: number) {
     setSelectedRunGroupId((prev) => (prev === id ? null : id));
+    if (!promptArtifactsByGroup[id] && !promptArtifactsLoading[id]) {
+      setPromptArtifactsLoading((prev) => ({ ...prev, [id]: true }));
+      try {
+        const artifacts = await api.getRunGroupPromptArtifacts(id);
+        setPromptArtifactsByGroup((prev) => ({ ...prev, [id]: artifacts }));
+      } catch {
+        // keep panel usable even if artifacts fail to load
+      } finally {
+        setPromptArtifactsLoading((prev) => ({ ...prev, [id]: false }));
+      }
+    }
   }
 
   function renderIterationRows(iterations: RunGroupRun[] | undefined) {
@@ -288,6 +307,73 @@ export default function App() {
           <div className="run-progress-fill" style={{ width: `${barPct}%` }} />
         </div>
         <div className="run-progress-caption muted">{caption}</div>
+      </div>
+    );
+  }
+
+  function renderPromptArtifacts(groupId: number) {
+    const loading = promptArtifactsLoading[groupId];
+    const data = promptArtifactsByGroup[groupId];
+    if (loading) {
+      return <div className="muted">Loading prompt artifacts…</div>;
+    }
+    if (!data) {
+      return <div className="muted">Prompt artifacts unavailable.</div>;
+    }
+    return (
+      <div className="artifacts-wrap">
+        <div className="artifact-section">
+          <strong>Prompt Versions</strong>
+          {data.versions.length === 0 ? (
+            <div className="muted">No prompt versions saved.</div>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Iter</th>
+                  <th>Source</th>
+                  <th>Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.versions.map((v) => (
+                  <tr key={v.id}>
+                    <td>{v.iteration}</td>
+                    <td>{v.source}</td>
+                    <td title={v.reason}>{truncate(v.reason || "—", 80)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+        <div className="artifact-section">
+          <strong>Prompt Deltas</strong>
+          {data.deltas.length === 0 ? (
+            <div className="muted">No prompt deltas saved.</div>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Iter</th>
+                  <th>Source</th>
+                  <th>Status</th>
+                  <th>Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.deltas.map((d) => (
+                  <tr key={d.id}>
+                    <td>{d.iteration}</td>
+                    <td>{d.source}</td>
+                    <td>{d.validation_status}</td>
+                    <td title={d.reason}>{truncate(d.reason || "—", 80)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
     );
   }
@@ -463,11 +549,11 @@ export default function App() {
                       tabIndex={0}
                       aria-expanded={expanded}
                       aria-label={`Run group ${g.id}, ${expanded ? "expanded" : "collapsed"}. Press Enter or Space to toggle.`}
-                      onClick={() => toggleExpand(g.id)}
+                      onClick={() => void toggleExpand(g.id)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
-                          toggleExpand(g.id);
+                          void toggleExpand(g.id);
                         }
                       }}
                     >
@@ -515,6 +601,10 @@ export default function App() {
                               </thead>
                               <tbody>{renderIterationRows(g.iterations)}</tbody>
                             </table>
+                            <div style={{ marginTop: 16 }}>
+                              <strong>Prompt Evolution</strong>
+                              {renderPromptArtifacts(g.id)}
+                            </div>
                           </div>
                         </td>
                       </tr>

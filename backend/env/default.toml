@@ -32,3 +32,5 @@ temperature = 0.2
 max_rules = 8
 max_rule_chars = 200
 max_delta_ops = 4
+rollback_gate = true
+rollback_drop = 1

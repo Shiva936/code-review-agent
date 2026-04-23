@@ -47,6 +47,36 @@ export type RunGroupsResponse = {
   groups: RunGroup[];
 };
 
+export type PromptVersion = {
+  id: number;
+  iteration: number;
+  prompt_text: string;
+  rules_json: string;
+  source: string;
+  reason: string;
+  created_at: string;
+};
+
+export type PromptDelta = {
+  id: number;
+  iteration: number;
+  weakest_issue: string;
+  input_json: string;
+  raw_output: string;
+  delta_json: string;
+  validation_status: string;
+  applied: boolean;
+  source: string;
+  reason: string;
+  created_at: string;
+};
+
+export type PromptArtifactsResponse = {
+  run_group_id: number;
+  versions: PromptVersion[];
+  deltas: PromptDelta[];
+};
+
 async function request<T>(
   path: string,
   init?: RequestInit,
@@ -89,5 +119,7 @@ export const api = {
     }),
   getRunGroups: (page = 1) =>
     request<RunGroupsResponse>(`/run-groups?page=${page}`),
+  getRunGroupPromptArtifacts: (groupId: number) =>
+    request<PromptArtifactsResponse>(`/run-group-prompt-artifacts?group_id=${groupId}`),
 };
 

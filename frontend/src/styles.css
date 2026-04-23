@@ -249,3 +249,12 @@ tr:hover td {
   color: #5c6370;
   user-select: none;
 }
+
+.artifacts-wrap {
+  display: grid;
+  gap: 12px;
+}
+
+.artifact-section table {
+  margin-top: 8px;
+}

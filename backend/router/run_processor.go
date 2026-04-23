@@ -48,6 +48,8 @@ func processRunGroup(cfg *config.Config, runGroupID int, code string, extraPromp
 	}
 	basePromptWithContext := prompt
 	existingRules := []string{}
+	lastStableRules := []string{}
+	lastRefinerSource := "rule_based"
 	prevReviewBySample := make([]string, len(samples))
 	var prevAggRubric int
 
@@ -113,6 +115,33 @@ func processRunGroup(cfg *config.Config, runGroupID int, code string, extraPromp
 
 		score := avgTotal
 		weakness := weakestIssue
+		rolledBack := false
+
+		if cfg.Refiner.RollbackGate && iter > 1 {
+			drop := prevAggRubric - score
+			threshold := cfg.Refiner.RollbackDrop
+			if threshold <= 0 {
+				threshold = 1
+			}
+			if drop >= threshold && lastRefinerSource == "llm_delta" {
+				existingRules = append([]string{}, lastStableRules...)
+				rolledBack = true
+				log.Printf("run_group %d iter %d: rollback gate triggered (score drop=%d), reverting to last stable rules", runGroupID, iter, drop)
+				_ = storage.SaveRunGroupPromptDelta(&storage.RunGroupPromptDelta{
+					RunGroupID:       runGroupID,
+					Iteration:        iter,
+					WeakestIssue:     weakness,
+					ValidationStatus: "rollback_gate",
+					Applied:          true,
+					Source:           "rollback_gate",
+					Reason:           fmt.Sprintf("score regressed by %d from previous iteration", drop),
+				})
+			}
+		}
+		if !rolledBack && lastRefinerSource == "llm_delta" {
+			lastStableRules = append([]string{}, existingRules...)
+		}
+
 		prevAggRubric = score
 		copy(prevReviewBySample, reviewsThisIter)
 
@@ -139,6 +168,10 @@ func processRunGroup(cfg *config.Config, runGroupID int, code string, extraPromp
 		refineDecision := refiner.RefineWithGuardrails(cfg, basePromptWithContext, weakness, existingRules, iter, string(detailJSON))
 		prompt = refineDecision.Prompt
 		existingRules = refineDecision.Rules
+		lastRefinerSource = refineDecision.Source
+		if refineDecision.Source != "llm_delta" {
+			lastStableRules = append([]string{}, existingRules...)
+		}
 
 		if err := storage.SaveRunGroupPromptDelta(&storage.RunGroupPromptDelta{
 			RunGroupID:       runGroupID,

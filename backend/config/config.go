@@ -53,6 +53,8 @@ type RefinerConfig struct {
 	MaxRules     int     `toml:"max_rules"`      // active rule budget
 	MaxRuleChars int     `toml:"max_rule_chars"` // per-rule size guard
 	MaxDeltaOps  int     `toml:"max_delta_ops"`  // max add/remove/modify ops per iteration
+	RollbackGate bool    `toml:"rollback_gate"`  // enable score-regression rollback
+	RollbackDrop int     `toml:"rollback_drop"`  // score drop threshold to trigger rollback
 }
 
 func NewConfig() *Config {

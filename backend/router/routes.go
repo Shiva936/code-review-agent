@@ -40,6 +40,7 @@ func Init(cfg *config.Config) http.Handler {
 	// Protected
 	mux.Handle("/run", wrap("/run", true, runHandler))
 	mux.Handle("/run-groups", wrap("/run-groups", true, runGroupsHandler))
+	mux.Handle("/run-group-prompt-artifacts", wrap("/run-group-prompt-artifacts", true, runGroupPromptArtifactsHandler))
 
 	// Catch-all for JSON 404/method handling.
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

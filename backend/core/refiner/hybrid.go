@@ -3,6 +3,7 @@ package refiner
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/Shiva936/code-review-agent/backend/config"
@@ -299,18 +300,64 @@ func looksLowSignal(s string) bool {
 }
 
 func hasConflictingRules(rules []string) bool {
-	hasAlways := false
-	hasNever := false
-	for _, r := range rules {
-		l := strings.ToLower(r)
-		if strings.Contains(l, "always") {
-			hasAlways = true
+	return len(AnalyzeRuleConflicts(rules)) > 0
+}
+
+func AnalyzeRuleConflicts(rules []string) []string {
+	normalized := normalizeRules(rules)
+	if len(normalized) < 2 {
+		return nil
+	}
+	var issues []string
+	type ruleClass struct {
+		raw       string
+		target    string
+		direction string
+	}
+	var classes []ruleClass
+	for _, r := range normalized {
+		target, dir := classifyRule(r)
+		if target == "" || dir == "" {
+			continue
 		}
-		if strings.Contains(l, "never") {
-			hasNever = true
+		classes = append(classes, ruleClass{raw: r, target: target, direction: dir})
+	}
+	for i := 0; i < len(classes); i++ {
+		for j := i + 1; j < len(classes); j++ {
+			a, b := classes[i], classes[j]
+			if a.target == b.target && a.direction != b.direction {
+				issues = append(issues, fmt.Sprintf("conflict on %s between %q and %q", a.target, a.raw, b.raw))
+			}
 		}
 	}
-	return hasAlways && hasNever
+	return issues
+}
+
+func classifyRule(rule string) (target string, direction string) {
+	r := strings.ToLower(strings.TrimSpace(rule))
+	r = regexp.MustCompile(`\s+`).ReplaceAllString(r, " ")
+	targets := []string{
+		"line reference", "line references", "variable name", "variables",
+		"severity labels", "actionable fix", "actionable fixes", "performance analysis",
+		"security analysis", "style", "logic analysis",
+	}
+	t := ""
+	for _, cand := range targets {
+		if strings.Contains(r, cand) {
+			t = cand
+			break
+		}
+	}
+	if t == "" {
+		return "", ""
+	}
+	if strings.Contains(r, "never ") || strings.Contains(r, "avoid ") || strings.Contains(r, "do not ") || strings.Contains(r, "don't ") || strings.Contains(r, "must not ") {
+		return t, "forbid"
+	}
+	if strings.Contains(r, "always ") || strings.Contains(r, "must ") || strings.Contains(r, "require ") || strings.Contains(r, "include ") || strings.Contains(r, "ensure ") {
+		return t, "require"
+	}
+	return "", ""
 }
 
 func fallbackRuleBased(cfg *config.Config, basePrompt string, weakness string, existingRules []string, iteration int, reason string) RefineDecision {

@@ -14,10 +14,11 @@ func setCORS(w http.ResponseWriter) {
 var PathRules = map[string]struct {
 	Methods []string
 }{
-	"/health":     {Methods: []string{http.MethodGet}},
-	"/run":        {Methods: []string{http.MethodPost}},
-	"/runs":       {Methods: []string{http.MethodGet}},
-	"/run-groups": {Methods: []string{http.MethodGet}},
+	"/health":                     {Methods: []string{http.MethodGet}},
+	"/run":                        {Methods: []string{http.MethodPost}},
+	"/runs":                       {Methods: []string{http.MethodGet}},
+	"/run-groups":                 {Methods: []string{http.MethodGet}},
+	"/run-group-prompt-artifacts": {Methods: []string{http.MethodGet}},
 }
 
 func ValidatePath(r *http.Request, w http.ResponseWriter) bool {
